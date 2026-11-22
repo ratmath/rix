@@ -184,6 +184,13 @@ export function renderSymbolicIr(node, parentPrecedence = 0, side = null) {
     }
     if (node.fn === "ABS") return `|${renderSymbolicIr(node.args[0])}|`;
     if (node.fn === "INTERVAL") return node.args.map((arg) => renderSymbolicIr(arg)).join(":");
+    if (node.fn === "BETWEEN") {
+        // args[0] spells the chain: "_" / "v" per value, ":" / "!" per link.
+        const [shape, ...values] = node.args;
+        const spelled = String(shape?.args?.[0] ?? shape ?? "");
+        let k = 0;
+        return [...spelled].map((ch) => (ch === "_" ? (k++, "_") : ch === "v" ? renderSymbolicIr(values[k++]) : ch === "!" ? ":!" : ":")).join("");
+    }
     if (node.fn === "ARRAY") return `[${node.args.map((arg) => renderSymbolicIr(arg)).join(", ")}]`;
     if (node.fn === "TUPLE") return `{: ${node.args.map((arg) => renderSymbolicIr(arg)).join(", ")} }`;
     if (node.fn === "SET") return `{| ${node.args.map((arg) => renderSymbolicIr(arg)).join(", ")} |}`;

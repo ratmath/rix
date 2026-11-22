@@ -1,4 +1,4 @@
-import { parse, scanIntervalRun } from "../../parser/parser.js";
+import { expandChainLinks, parse, scanIntervalRun } from "../../parser/parser.js";
 import { tokenize } from "../../parser/tokenizer.js";
 
 const PIPE_OPERATORS = new Set([
@@ -165,7 +165,8 @@ function layoutRix(input, ast, options) {
     };
     visit(ast);
     // A quoted string is an operand even when its text spells an operator.
-    const tokens = tokenize(input).filter((token) => token.type !== "End")
+    // Chain links (`:!`, `_:`, `:_`) are read as the colon and `_` the parser sees.
+    const tokens = expandChainLinks(tokenize(input)).filter((token) => token.type !== "End")
         .map((token) => token.type === "String" && !isComment(token) ? { ...token, value: STRING_VALUE } : token);
     if (tokens.length === 0) return input;
 
@@ -321,7 +322,7 @@ function layoutRix(input, ast, options) {
             if (group?.expanded) newline();
             else if (group?.value === "{#" && !spacedBefore(index)) { /* `{#x}` is one spelling */ }
             else if (group?.value?.startsWith("{") && previous && previous.value !== "{") space();
-            write(value);
+            write(token.strict ? ":!" : value);
             previous = token;
             previousWasUnary = false;
             continue;
@@ -348,7 +349,7 @@ function layoutRix(input, ast, options) {
         if (PIPE_OPERATORS.has(value)) {
             newline();
             write(" ".repeat(indentWidth));
-            write(value);
+            write(token.strict ? ":!" : value);
             space();
             previous = token;
             previousWasUnary = false;
@@ -358,7 +359,7 @@ function layoutRix(input, ast, options) {
         if (value === ":" && token.type === "Symbol" && !intervalRun.has(index)
             && (spacedBefore(index) || spacedBefore(index + 1))) {
             if (spacedBefore(index)) space();
-            write(value);
+            write(token.strict ? ":!" : value);
             if (spacedBefore(index + 1)) space();
             previous = token;
             previousWasUnary = false;
@@ -369,7 +370,7 @@ function layoutRix(input, ast, options) {
         if (TIGHT_OPERATORS.has(value) && value !== ":" && !intervalRun.has(index) && !isUnary(value, previous)
             && ((intervalRun.has(index - 1) && spacedBefore(index)) || (intervalRun.has(index + 1) && spacedBefore(index + 1)))) {
             space();
-            write(value);
+            write(token.strict ? ":!" : value);
             space();
             previous = token;
             previousWasUnary = false;
@@ -378,7 +379,7 @@ function layoutRix(input, ast, options) {
 
         if (SPACED_OPERATORS.has(value) && !isUnary(value, previous) && !tightInRun) {
             space();
-            write(value);
+            write(token.strict ? ":!" : value);
             space();
             previous = token;
             previousWasUnary = false;
@@ -387,7 +388,7 @@ function layoutRix(input, ast, options) {
 
         if (TIGHT_OPERATORS.has(value) || isUnary(value, previous) || (tightInRun && SPACED_OPERATORS.has(value))) {
             previousWasUnary = isUnary(value, previous);
-            write(value);
+            write(token.strict ? ":!" : value);
             previous = token;
             continue;
         }

@@ -1574,6 +1574,15 @@ function finalizeLoopHeader(input, position, end, options) {
   };
 }
 
+function matchChainLink(remaining) {
+  const after = remaining[2];
+  if (remaining.startsWith(":!") && after !== "=") return ":!";
+  if (remaining.startsWith("_:") && (after === undefined || !/[=:<>~+\/%]/.test(after))) return "_:";
+  if (remaining.startsWith(":_") && (after === undefined || !identifierPart.test(codePointAt(remaining, 2)))
+    && after !== ">" && after !== "^") return ":_";
+  return null;
+}
+
 function tryMatchSymbol(input, position) {
   const remaining = input.slice(position);
   if (/^\/(?:==|:=|~=|::=|~~=)\s*\/(?=[\s}])/.test(remaining)) {
@@ -1582,6 +1591,20 @@ function tryMatchSymbol(input, position) {
       original: "/",
       value: "/",
       pos: [position, position, position + 1],
+    };
+  }
+
+  // Betweenness chain links (two-character tokens): `:!` is a strict link,
+  // `_:` and `:_` are unbounded ends, as in `_:x:!8` and `2:!x:_`. Longer
+  // colon operators (`:!=`, `_:=`, `::`, `:+` ...) and names (`:_b`, `:_1`)
+  // keep their old reading.
+  const chainLink = matchChainLink(remaining);
+  if (chainLink) {
+    return {
+      type: "Symbol",
+      original: chainLink,
+      value: chainLink,
+      pos: [position, position, position + chainLink.length],
     };
   }
 

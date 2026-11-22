@@ -87,6 +87,7 @@ export const shortTests = new Set([
     "tests/tools/language-service.test.js",
     "tests/tools/formatter-meaning.test.js",
     "tests/parser/spaced-interval-colon.test.js",
+    "tests/parser/betweenness-links.test.js",
     "tests/tools/lsp.test.js",
     "tests/tools/rix-to-ir.test.js",
     "tests/tools/sheet-view.test.js",

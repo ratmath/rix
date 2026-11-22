@@ -526,23 +526,35 @@ const LOWERERS = {
 
     if (op === ":") {
       const args = [];
+      // Betweenness links: `:!` is strict, `_:`/`:_` mark an unbounded end.
+      // links[k] describes the link before args[k]; ends[k] marks args[k].
+      const links = [];
+      const ends = [];
+      let marked = false;
       const extractArgs = (n) => {
         if (n && n.type === "BinaryOperation" && n.operator === ":") {
           extractArgs(n.left);
+          links[args.length] = n.strict === true;
+          if (n.strict) marked = true;
           extractArgs(n.right);
         } else {
+          if (n?.type === "NULL" && n.unbounded) marked = true;
           const lowered = lowerNode(n);
           // If it lowered to an INTERVAL IR node, flatten it
           if (lowered && typeof lowered === "object" && lowered.fn === "INTERVAL") {
             args.push(...lowered.args);
           } else {
+            ends[args.length] = n?.type === "NULL" && n.unbounded === true;
             args.push(lowered);
           }
         }
       };
-      extractArgs(node.left);
-      extractArgs(node.right);
-      return ir("INTERVAL", ...args);
+      extractArgs(node);
+      if (!marked) return ir("INTERVAL", ...args);
+      // BETWEEN's first argument spells the chain: `_` for an unbounded end,
+      // `v` for a value, and `:` or `!` for each link between them.
+      const shape = args.map((_, k) => (k > 0 ? (links[k] ? "!" : ":") : "") + (ends[k] ? "_" : "v")).join("");
+      return ir("BETWEEN", ir("STRING", shape), ...args);
     }
 
     // Base conversion operators
