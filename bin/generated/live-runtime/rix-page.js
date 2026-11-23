@@ -38477,7 +38477,7 @@ symbolicNamespace._proto = {=
 `
   });
 
-  // node_modules/@ratmath/core/src/base-system.js
+  // ../packages/core/src/base-system.js
   class BaseSystem {
     #base;
     #radix;
@@ -38896,7 +38896,7 @@ symbolicNamespace._proto = {=
   BaseSystem.registerPrefix("m", BaseSystem.BASE60);
   BaseSystem.registerPrefix("y", BaseSystem.BASE64);
 
-  // node_modules/@ratmath/core/src/rational-literal.js
+  // ../packages/core/src/rational-literal.js
   var DIGITS = String.raw`\d(?:_?\d)*`;
   var MAX_EXPANDED_DIGITS = 1e5;
   function inputString(input, label = "number") {
@@ -39041,7 +39041,7 @@ symbolicNamespace._proto = {=
     return [p, q];
   }
 
-  // node_modules/@ratmath/core/src/bigint.js
+  // ../packages/core/src/bigint.js
   function toExactBigInt(value, label = "Value") {
     if (typeof value === "number") {
       if (!Number.isSafeInteger(value)) {
@@ -39058,7 +39058,7 @@ symbolicNamespace._proto = {=
     throw new TypeError(`${label} must be an integer number, string, or bigint`);
   }
 
-  // node_modules/@ratmath/core/src/reduced-arithmetic.js
+  // ../packages/core/src/reduced-arithmetic.js
   function gcd(a, b) {
     if (a < 0n)
       a = -a;
@@ -39103,7 +39103,7 @@ symbolicNamespace._proto = {=
     return den < 0n ? [-n, -den] : [n, den];
   }
 
-  // node_modules/@ratmath/core/src/rational.js
+  // ../packages/core/src/rational.js
   var POWERS_OF_5 = Object.freeze({
     16: 5n ** 16n,
     8: 5n ** 8n,
@@ -40426,7 +40426,7 @@ symbolicNamespace._proto = {=
     }
   }
 
-  // node_modules/@ratmath/core/src/rational-interval.js
+  // ../packages/core/src/rational-interval.js
   function hasTerminatingDecimal(value) {
     let denominator = value.denominator;
     while (denominator % 2n === 0n)
@@ -41066,7 +41066,7 @@ symbolicNamespace._proto = {=
     }
   }
 
-  // node_modules/@ratmath/core/src/rational-interval-set.js
+  // ../packages/core/src/rational-interval-set.js
   function asRational(value, name) {
     if (value === null)
       return null;
@@ -41379,7 +41379,7 @@ symbolicNamespace._proto = {=
     }
   }
 
-  // node_modules/@ratmath/core/src/range-arithmetic.js
+  // ../packages/core/src/range-arithmetic.js
   var ZERO = Rational.zero;
   var ONE = Rational.one;
   var RESULT_SCHEMA = "ratmath.range-operation-result@1";
@@ -41731,7 +41731,7 @@ symbolicNamespace._proto = {=
     });
   }
 
-  // node_modules/@ratmath/core/src/fraction.js
+  // ../packages/core/src/fraction.js
   class Fraction {
     #numerator;
     #denominator;
@@ -42152,7 +42152,7 @@ symbolicNamespace._proto = {=
     }
   }
 
-  // node_modules/@ratmath/core/src/fraction-interval.js
+  // ../packages/core/src/fraction-interval.js
   class FractionInterval {
     #low;
     #high;
@@ -42254,7 +42254,7 @@ symbolicNamespace._proto = {=
     }
   }
 
-  // node_modules/@ratmath/core/src/integer.js
+  // ../packages/core/src/integer.js
   function integerDivisor(other, zeroMessage) {
     if (!(other instanceof Integer)) {
       throw new TypeError("Floor division and modulo require an Integer divisor");
@@ -42599,7 +42599,7 @@ symbolicNamespace._proto = {=
     }
   }
 
-  // node_modules/@ratmath/core/src/certified-approximation.js
+  // ../packages/core/src/certified-approximation.js
   var Relation = Object.freeze({
     LESS: 1,
     EQUAL: 2,
@@ -43062,7 +43062,7 @@ symbolicNamespace._proto = {=
     });
   }
 
-  // node_modules/@ratmath/core/src/type-promotion.js
+  // ../packages/core/src/type-promotion.js
   class TypePromotion {
     constructor() {
       throw new TypeError("TypePromotion is a static utility class");
@@ -43207,7 +43207,7 @@ symbolicNamespace._proto = {=
     }
   }
 
-  // node_modules/@ratmath/core/src/numeral-system.js
+  // ../packages/core/src/numeral-system.js
   var NUMERAL_SYSTEM_SCHEMA = "ratmath.numeral-system@1";
   var NUMERAL_LIMITS = Object.freeze({ tokens: 256, tokenLength: 32, sourceLength: 65536, digits: 4096, bits: 16384 });
   var reserved = /[\s+\-*/^!()[\]:.#~_`?\\]/u;
@@ -43520,7 +43520,7 @@ symbolicNamespace._proto = {=
     }
   }
 
-  // node_modules/@ratmath/core/src/number-parser.js
+  // ../packages/core/src/number-parser.js
   function parseDecimalValue(input) {
     const [numerator, denominator] = parseDecimalParts(input);
     return new Rational(numerator, denominator);
@@ -46861,6 +46861,16 @@ symbolicNamespace._proto = {=
       pos: [position, position, end]
     };
   }
+  function matchChainLink(remaining) {
+    const after = remaining[2];
+    if (remaining.startsWith(":!") && after !== "=")
+      return ":!";
+    if (remaining.startsWith("_:") && (after === undefined || !/[=:<>~+\/%]/.test(after)))
+      return "_:";
+    if (remaining.startsWith(":_") && (after === undefined || !identifierPart.test(codePointAt(remaining, 2))) && after !== ">" && after !== "^")
+      return ":_";
+    return null;
+  }
   function tryMatchSymbol(input, position) {
     const remaining = input.slice(position);
     if (/^\/(?:==|:=|~=|::=|~~=)\s*\/(?=[\s}])/.test(remaining)) {
@@ -46869,6 +46879,15 @@ symbolicNamespace._proto = {=
         original: "/",
         value: "/",
         pos: [position, position, position + 1]
+      };
+    }
+    const chainLink = matchChainLink(remaining);
+    if (chainLink) {
+      return {
+        type: "Symbol",
+        original: chainLink,
+        value: chainLink,
+        pos: [position, position, position + chainLink.length]
       };
     }
     for (const symbol of symbols) {
@@ -58212,7 +58231,7 @@ format:
   function scanIntervalRun(tokens, start, splitOperators = new Set) {
     const isOpen = (value) => typeof value === "string" && (value === "(" || value === "[" || value === "~[" || value === "~{" || value.startsWith("{"));
     const isClose = (value) => typeof value === "string" && (value === ")" || value === "]" || value.endsWith("}") && !value.startsWith("{"));
-    const endsOperand = (token) => token.type === "Number" || token.type === "ActiveBaseNumber" || token.type === "Identifier" || token.type === "OuterIdentifier" || token.type === "PlaceHolder" || token.type === "String" || isClose(token.value);
+    const endsOperand = (token) => token.type === "Number" || token.type === "ActiveBaseNumber" || token.unbounded === true || token.type === "Identifier" || token.type === "OuterIdentifier" || token.type === "PlaceHolder" || token.type === "String" || isClose(token.value);
     const top = [];
     let index = start;
     while (index < tokens.length) {
@@ -58277,13 +58296,50 @@ format:
     }
     return { end, stop: index, members: new Set(top.filter((at) => at < end)), tokens: top };
   }
+  function expandChainLinks(tokens) {
+    if (!tokens.some((token) => token.type === "Symbol" && (token.value === ":!" || token.value === "_:" || token.value === ":_"))) {
+      return tokens;
+    }
+    const out = [];
+    for (const token of tokens) {
+      if (token.type !== "Symbol" || !(token.value === ":!" || token.value === "_:" || token.value === ":_")) {
+        out.push(token);
+        continue;
+      }
+      const [start, at] = token.pos;
+      const lead = token.original.slice(0, token.original.length - 2);
+      const colon = (from, strict) => ({
+        type: "Symbol",
+        value: ":",
+        original: from === start ? `${lead}${strict ? ":!" : ":"}` : ":",
+        pos: [from, from === start ? at : from, (from === start ? at : from) + (strict ? 2 : 1)],
+        ...strict ? { strict: true } : {},
+        link: token.value
+      });
+      const blank = (from) => ({
+        type: "Symbol",
+        value: "_",
+        original: from === start ? `${lead}_` : "_",
+        pos: [from, from === start ? at : from, (from === start ? at : from) + 1],
+        unbounded: true,
+        link: token.value
+      });
+      if (token.value === ":!")
+        out.push(colon(start, true));
+      else if (token.value === "_:")
+        out.push(blank(start), colon(at + 1, false));
+      else
+        out.push(colon(start, false), blank(at + 1));
+    }
+    return out;
+  }
 
   class Parser {
     constructor(tokens, systemLookup, source = "", customOperators = new Map, limits = sourceLimits()) {
       this.limits = limits;
       this.expressionDepth = 0;
       this.nodeCount = 0;
-      this.tokens = tokens.map((token) => token.type === "String" && token.kind !== "comment" ? { ...token, text: token.value, value: STRING_TOKEN_VALUE } : token);
+      this.tokens = expandChainLinks(tokens).map((token) => token.type === "String" && token.kind !== "comment" ? { ...token, text: token.value, value: STRING_TOKEN_VALUE } : token);
       this.systemLookup = systemLookup || (() => ({ type: "identifier" }));
       this.source = source;
       this.customOperators = customOperators;
@@ -58807,7 +58863,8 @@ format:
             this.advance();
             return this.createNode("NULL", {
               original: token.original,
-              pos: token.pos
+              pos: token.pos,
+              ...token.unbounded ? { unbounded: true } : {}
             });
           } else if (token.value === "$$") {
             this.advance();
@@ -59418,7 +59475,8 @@ format:
           left: assignmentLeft,
           right,
           pos: left.pos,
-          original: left.original + operator.original
+          original: left.original + operator.original,
+          ...operator.strict ? { strict: true } : {}
         });
       }
     }
@@ -64882,6 +64940,12 @@ ${indentStr})`;
       return `|${renderSymbolicIr(node.args[0])}|`;
     if (node.fn === "INTERVAL")
       return node.args.map((arg) => renderSymbolicIr(arg)).join(":");
+    if (node.fn === "BETWEEN") {
+      const [shape, ...values] = node.args;
+      const spelled = String(shape?.args?.[0] ?? shape ?? "");
+      let k = 0;
+      return [...spelled].map((ch) => ch === "_" ? (k++, "_") : ch === "v" ? renderSymbolicIr(values[k++]) : ch === "!" ? ":!" : ":").join("");
+    }
     if (node.fn === "ARRAY")
       return `[${node.args.map((arg) => renderSymbolicIr(arg)).join(", ")}]`;
     if (node.fn === "TUPLE")
@@ -80068,6 +80132,48 @@ ${indented.join(`,
       pure: true,
       doc: "Create an interval [lo, hi] or test betweenness like a:b:c"
     },
+    BETWEEN: {
+      impl(args) {
+        const shape = typeof args[0] === "string" ? args[0] : args[0]?.value;
+        const values = args.slice(1);
+        const ends = [];
+        const strict = [false];
+        for (const ch of shape) {
+          if (ch === "_" || ch === "v")
+            ends.push(ch === "_");
+          else
+            strict.push(ch === "!");
+        }
+        const last = values.length - 1;
+        if (values.length < 3) {
+          throw new Error("_ and :! belong in a betweenness chain such as _:x:8 or 2:!x:8, which has a middle value");
+        }
+        ends.forEach((unbounded, k) => {
+          if (unbounded && k !== 0 && k !== last) {
+            throw new Error("_ stands only at either end of a betweenness chain, as in _:x:8 or 2:x:_");
+          }
+        });
+        const points = values.map((value, k) => ends[k] ? null : getValues(value));
+        const runs = (direction) => {
+          for (let k = 1;k < points.length; k++) {
+            if (points[k - 1] === null || points[k] === null)
+              continue;
+            for (const a of points[k - 1]) {
+              for (const b of points[k]) {
+                const order = compare2(a, b) * direction;
+                if (order > 0 || order === 0 && strict[k])
+                  return false;
+              }
+            }
+          }
+          return true;
+        };
+        const unbounded = ends[0] || ends[last];
+        return runs(1) || !unbounded && runs(-1) ? new Integer(1) : null;
+      },
+      pure: true,
+      doc: "Betweenness chain with strict links (:!) or unbounded ends (_: and :_)"
+    },
     MEMBER: {
       impl(args, context, evaluate) {
         let [x, coll] = args;
@@ -83692,22 +83798,33 @@ ${indented.join(`,
       }
       if (op === ":") {
         const args = [];
+        const links = [];
+        const ends = [];
+        let marked = false;
         const extractArgs = (n) => {
           if (n && n.type === "BinaryOperation" && n.operator === ":") {
             extractArgs(n.left);
+            links[args.length] = n.strict === true;
+            if (n.strict)
+              marked = true;
             extractArgs(n.right);
           } else {
+            if (n?.type === "NULL" && n.unbounded)
+              marked = true;
             const lowered = lowerNode(n);
             if (lowered && typeof lowered === "object" && lowered.fn === "INTERVAL") {
               args.push(...lowered.args);
             } else {
+              ends[args.length] = n?.type === "NULL" && n.unbounded === true;
               args.push(lowered);
             }
           }
         };
-        extractArgs(node.left);
-        extractArgs(node.right);
-        return ir2("INTERVAL", ...args);
+        extractArgs(node);
+        if (!marked)
+          return ir2("INTERVAL", ...args);
+        const shape = args.map((_, k) => (k > 0 ? links[k] ? "!" : ":" : "") + (ends[k] ? "_" : "v")).join("");
+        return ir2("BETWEEN", ir2("STRING", shape), ...args);
       }
       if (op === "_>") {
         return ir2("TOBASE", lowerNode(node.left), lowerNode(node.right));
@@ -104507,6 +104624,7 @@ Evidence: ${JSON.stringify(frame.snapshot)}
     "TUPLE",
     "SET",
     "INTERVAL",
+    "BETWEEN",
     "INDEX",
     "RANDOM",
     "SYS_CALL"

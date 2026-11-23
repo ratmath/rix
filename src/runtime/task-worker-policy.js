@@ -1,7 +1,7 @@
 /** Worker eligibility is an explicit core subset, never inferred from host metadata. */
 export const TASK_IR = new Set([
     "LITERAL", "STRING", "RETRIEVE", "ADD", "SUB", "MUL", "DIV", "INTDIV", "DIVUP", "DIVROUND", "DIVMOD", "MOD", "POW", "NEG", "ABS", "FACTORIAL", "DOUBLE_FACTORIAL",
-    "EQ", "NEQ", "LT", "LE", "GT", "GE", "NOT", "AND", "OR", "TERNARY", "DEFER", "ARRAY", "TUPLE", "SET", "INTERVAL", "INDEX", "RANDOM", "SYS_CALL",
+    "EQ", "NEQ", "LT", "LE", "GT", "GE", "NOT", "AND", "OR", "TERNARY", "DEFER", "ARRAY", "TUPLE", "SET", "INTERVAL", "BETWEEN", "INDEX", "RANDOM", "SYS_CALL",
 ]);
 export const TASK_CAPABILITIES = new Set(["ADD", "SUB", "MUL", "DIV", "POW", "NEG", "ABS", "MIN", "MAX", "FLOOR", "CEIL", "ROUND", "GCD", "LCM"]);
 const registries = new WeakMap(), systems = new WeakMap();

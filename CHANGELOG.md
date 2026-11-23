@@ -2,7 +2,21 @@
 
 ## Unreleased
 
+### Added
+
+- Betweenness chains take strict links and unbounded ends, as two-character
+  tokens: `:!` is strict (`2:!x:8` is 2 < x ≤ 8, `2:x:!8` is 2 ≤ x < 8), and
+  `_:` / `:_` are unbounded ends (`_:x:8` is x ≤ 8, `2:x:_` is x ≥ 2; a chain
+  with one reads ascending). `||` joins chains as usual. The same spelling is
+  read by Core's `R` and `R.region` (0.9.0) and by `@ratmath/analytic`.
+  These forms lower to the new `BETWEEN` IR operation; plain chains still use
+  `INTERVAL`. `_:5`, `2:!5` and `1:_:3` throw.
+
 ### Changed
+
+- `a:!b` used to read as `a:(NOT b)`, which always gave `_`; it is now a
+  strict link. `_` touching a colon is now an unbounded end rather than a
+  null endpoint; a variable holding `_` is still null.
 
 - Interval colons are spacing-aware. An unspaced colon groups with the
   unspaced text around it before any spaced operator, so `1:2 + 3:4` is `4:6`

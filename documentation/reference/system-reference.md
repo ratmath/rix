@@ -522,6 +522,7 @@ This is the evaluator dispatch surface, not a promise that every name should be 
 | `ASSIGN_EXPR` | lazy, effectful/unspecified | Assignment expression (lvalue = expr) |
 | `ASSIGN_UPDATE` | lazy, effectful/unspecified | In-place value replacement (~=) — preserves cell identity, ordinary meta; replaces ephemeral; preserves sticky unless rhs overrides |
 | `AUDIO` | eager, pure | Create a portable audio asset |
+| `BETWEEN` | eager, pure | Betweenness chain with strict links (:!) or unbounded ends (\_: and :\_) |
 | `BIND` | lazy, effectful/unspecified | Capture a live Binding to a RiX variable |
 | `BINOP` | eager, pure | Fallback for unrecognized binary operators |
 | `BLOCK` | lazy, effectful/unspecified | Sequential block execution, returns last value |

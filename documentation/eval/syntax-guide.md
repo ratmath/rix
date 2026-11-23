@@ -1164,6 +1164,8 @@ of silently truncating output.
 | `a:b:c:d...` | `INTERVAL` | `2:3:5:7` (n-ary betweenness) |
 | `a:(b:c):d` | `INTERVAL` | `2:(3:4):5` (nested betweenness) |
 | `a:{|b:c|}:d` | `INTERVAL` | `2:{|3:4|}:5` (set unpacking) |
+| `a:!b:c`, `a:b:!c` | `BETWEEN` | `2:!x:8` (strict link: 2 < x ≤ 8) |
+| `_:b:c`, `a:b:_` | `BETWEEN` | `_:x:8`, `2:x:_` (unbounded end; reads ascending) |
 
 ### Colon-Strings
 
@@ -1645,6 +1647,7 @@ general systems. The former `:=:` solve operator has been removed.
 | `SHAPED_LITERAL(shape, elems...)` | Create Shaped storage explicitly or by rectangular semicolon inference | `{:2x3: 1, 2, 3; 4, 5, 6 }`, `[1, 2; 3, 4]`, `[1,2;3,4 ;; 5,6;7,8]` |
 | `ARRAY_CAPTURE(elems...)` | Create array with brace-form constructor capture controls | `{.. 1, 2, 3 }`, `{.. /:=/ x, y }` |
 | `INTERVAL(args...)` | Create interval or check n-ary betweenness (unpacks nested intervals/sets) | `a:b` or `a:b:c...` |
+| `BETWEEN(shape, args...)` | Betweenness with strict links or unbounded ends; `shape` spells the chain (`_`/`v` per value, `:`/`!` per link) | `_:x:!8`, `2:!x:_` |
 | `UNION(a, b)` | Binary set or exact interval-set union | `A \/ B` |
 | `HULL(a, b)` | Smallest covering closed interval for exact ranges | `A |\/| B` |
 | `INTERSECT(a, b)` | Binary set or exact interval-set intersection | `A /\ B` |

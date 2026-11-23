@@ -1755,6 +1755,17 @@ This n-ary betweenness works for arbitrary chain lengths (e.g., `1:2:3:4:5`) and
 - `2:(3:4):5` checks if the interval `3:4` is entirely contained within `2:5`.
 - `2:{|3, 4, 4.5|}:5` checks if every element in the set is between 2 and 5.
 
+A chain link can be strict, and either end can be unbounded:
+- `:!` is a strict link: `2:!x:8` means 2 < x ≤ 8 and `2:x:!8` means 2 ≤ x < 8.
+- `_:` and `:_` are unbounded ends: `_:x:8` means x ≤ 8 and `2:x:_` means x ≥ 2.
+  A chain with an unbounded end reads ascending.
+- `||` joins chains: `_:x:!-1 || 1:!x:_` asks whether x < −1 or x > 1.
+
+These are two-character tokens, so `_` only means unbounded when it touches the
+colon; a variable that happens to hold `_` is still null. The same spelling is
+read by `R` and `R.region` in RatMath Core, and by `@ratmath/analytic` for
+piecewise regions such as `2n:x:!2n+1`.
+
 ### Bases
 Input numbers are in base 10 unless they have a leading `0` followed by a letter. There are some bases that are named by default, such as `0b` for binary. Capital letters are available for user defined bases. 
 

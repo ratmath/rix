@@ -565,7 +565,7 @@ export function scanIntervalRun(tokens, start, splitOperators = new Set()) {
   const isClose = (value) => typeof value === "string"
     && (value === ")" || value === "]" || (value.endsWith("}") && !value.startsWith("{")));
   const endsOperand = (token) => token.type === "Number" || token.type === "ActiveBaseNumber"
-    || token.type === "Identifier" || token.type === "OuterIdentifier" || token.type === "PlaceHolder"
+    || token.unbounded === true || token.type === "Identifier" || token.type === "OuterIdentifier" || token.type === "PlaceHolder"
     || token.type === "String" || isClose(token.value);
   const top = [];
   let index = start;
@@ -624,6 +624,43 @@ export function scanIntervalRun(tokens, start, splitOperators = new Set()) {
   return { end, stop: index, members: new Set(top.filter((at) => at < end)), tokens: top };
 }
 
+/**
+ * Betweenness chain links arrive as two-character tokens (`:!`, `_:`, `:_`).
+ * The parser reads them as an ordinary colon, marked `strict`, next to an
+ * unspaced `_` operand marked `unbounded`, so spacing and precedence work as
+ * for any colon.
+ */
+export function expandChainLinks(tokens) {
+  if (!tokens.some((token) => token.type === "Symbol" && (token.value === ":!" || token.value === "_:" || token.value === ":_"))) {
+    return tokens;
+  }
+  const out = [];
+  for (const token of tokens) {
+    if (token.type !== "Symbol" || !(token.value === ":!" || token.value === "_:" || token.value === ":_")) {
+      out.push(token);
+      continue;
+    }
+    const [start, at] = token.pos;
+    const lead = token.original.slice(0, token.original.length - 2);
+    // A strict colon keeps both characters in its span, so printers that copy
+    // the source keep the `!`.
+    const colon = (from, strict) => ({
+      type: "Symbol", value: ":", original: from === start ? `${lead}${strict ? ":!" : ":"}` : ":",
+      pos: [from, from === start ? at : from, (from === start ? at : from) + (strict ? 2 : 1)],
+      ...(strict ? { strict: true } : {}), link: token.value,
+    });
+    const blank = (from) => ({
+      type: "Symbol", value: "_", original: from === start ? `${lead}_` : "_",
+      pos: [from, from === start ? at : from, (from === start ? at : from) + 1],
+      unbounded: true, link: token.value,
+    });
+    if (token.value === ":!") out.push(colon(start, true));
+    else if (token.value === "_:") out.push(blank(start), colon(at + 1, false));
+    else out.push(colon(start, false), blank(at + 1));
+  }
+  return out;
+}
+
 class Parser {
   constructor(tokens, systemLookup, source = "", customOperators = new Map(), limits = sourceLimits()) {
     this.limits = limits;
@@ -632,7 +669,7 @@ class Parser {
     // A string literal's text must never be mistaken for punctuation: `","`
     // is not a separator and `")"` is not a closer. Structural checks compare
     // `token.value`, so string tokens carry their text in `text` instead.
-    this.tokens = tokens.map((token) => (
+    this.tokens = expandChainLinks(tokens).map((token) => (
       token.type === "String" && token.kind !== "comment"
         ? { ...token, text: token.value, value: STRING_TOKEN_VALUE }
         : token
@@ -1230,11 +1267,13 @@ class Parser {
         } else if (token.value === "::") {
           return this.parseSymbolicVariable(false);
         } else if (token.value === "_") {
-          // Underscore is always a null symbol
+          // Underscore is always a null symbol; beside a colon (`_:`, `:_`)
+          // it is also an unbounded end of a betweenness chain.
           this.advance();
           return this.createNode("NULL", {
             original: token.original,
             pos: token.pos,
+            ...(token.unbounded ? { unbounded: true } : {}),
           });
         } else if (token.value === "$$") {
           this.advance();
@@ -1954,6 +1993,7 @@ class Parser {
         right: right,
         pos: left.pos,
         original: left.original + operator.original,
+        ...(operator.strict ? { strict: true } : {}),
       });
     }
   }

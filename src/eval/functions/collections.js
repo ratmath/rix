@@ -576,6 +576,47 @@ export const collectionFunctions = {
         doc: "Create an interval [lo, hi] or test betweenness like a:b:c",
     },
 
+    BETWEEN: {
+        impl(args) {
+            // args[0] spells the chain (see lower.js): "_:v!v:_" is _:x:!8:_ style.
+            const shape = typeof args[0] === "string" ? args[0] : args[0]?.value;
+            const values = args.slice(1);
+            const ends = [];
+            const strict = [false];
+            for (const ch of shape) {
+                if (ch === "_" || ch === "v") ends.push(ch === "_");
+                else strict.push(ch === "!");
+            }
+            const last = values.length - 1;
+            if (values.length < 3) {
+                throw new Error("_ and :! belong in a betweenness chain such as _:x:8 or 2:!x:8, which has a middle value");
+            }
+            ends.forEach((unbounded, k) => {
+                if (unbounded && k !== 0 && k !== last) {
+                    throw new Error("_ stands only at either end of a betweenness chain, as in _:x:8 or 2:x:_");
+                }
+            });
+            const points = values.map((value, k) => (ends[k] ? null : getValues(value)));
+            const runs = (direction) => {
+                for (let k = 1; k < points.length; k++) {
+                    if (points[k - 1] === null || points[k] === null) continue;
+                    for (const a of points[k - 1]) {
+                        for (const b of points[k]) {
+                            const order = compare(a, b) * direction;
+                            if (order > 0 || (order === 0 && strict[k])) return false;
+                        }
+                    }
+                }
+                return true;
+            };
+            // A chain with an unbounded end reads ascending: _:x:8 is x <= 8.
+            const unbounded = ends[0] || ends[last];
+            return runs(1) || (!unbounded && runs(-1)) ? new Integer(1) : null;
+        },
+        pure: true,
+        doc: "Betweenness chain with strict links (:!) or unbounded ends (_: and :_)",
+    },
+
     MEMBER: {
         impl(args, context, evaluate) {
             let [x, coll] = args;
