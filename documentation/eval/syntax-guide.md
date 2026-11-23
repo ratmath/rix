@@ -1277,6 +1277,12 @@ The `#` separates the non-repeating fractional part from the (infinitely) repeat
 | `3.14_^2` | 314 | 3.14 × 10² |
 | `1_^-2` | 1/100 | 1 × 10⁻² |
 | `1_^2/3` | 100/3 | shift the numerator, then divide |
+| `0t1_^10` | 27 | base-prefixed: 1 × 3³ (ternary `10` is 3) |
+| `0xff_^1` | 4080 | 255 × 16 |
+
+After a base prefix (`0x`, `0t`, `0z[7]`, …) the shift is by that base, and the
+exponent is written in that base too, so `0t2_^-1` is 2/3 and `0xa_^b` is
+10 × 16¹¹. Core's `R` template reads these the same way.
 
 #### Continued Fractions (`.~`)
 
