@@ -38477,7 +38477,7 @@ symbolicNamespace._proto = {=
 `
   });
 
-  // ../packages/core/src/base-system.js
+  // node_modules/@ratmath/core/src/base-system.js
   class BaseSystem {
     #base;
     #radix;
@@ -38896,7 +38896,7 @@ symbolicNamespace._proto = {=
   BaseSystem.registerPrefix("m", BaseSystem.BASE60);
   BaseSystem.registerPrefix("y", BaseSystem.BASE64);
 
-  // ../packages/core/src/rational-literal.js
+  // node_modules/@ratmath/core/src/rational-literal.js
   var DIGITS = String.raw`\d(?:_?\d)*`;
   var MAX_EXPANDED_DIGITS = 1e5;
   function inputString(input, label = "number") {
@@ -39041,7 +39041,7 @@ symbolicNamespace._proto = {=
     return [p, q];
   }
 
-  // ../packages/core/src/bigint.js
+  // node_modules/@ratmath/core/src/bigint.js
   function toExactBigInt(value, label = "Value") {
     if (typeof value === "number") {
       if (!Number.isSafeInteger(value)) {
@@ -39058,7 +39058,7 @@ symbolicNamespace._proto = {=
     throw new TypeError(`${label} must be an integer number, string, or bigint`);
   }
 
-  // ../packages/core/src/reduced-arithmetic.js
+  // node_modules/@ratmath/core/src/reduced-arithmetic.js
   function gcd(a, b) {
     if (a < 0n)
       a = -a;
@@ -39103,7 +39103,7 @@ symbolicNamespace._proto = {=
     return den < 0n ? [-n, -den] : [n, den];
   }
 
-  // ../packages/core/src/rational.js
+  // node_modules/@ratmath/core/src/rational.js
   var POWERS_OF_5 = Object.freeze({
     16: 5n ** 16n,
     8: 5n ** 8n,
@@ -40426,7 +40426,7 @@ symbolicNamespace._proto = {=
     }
   }
 
-  // ../packages/core/src/rational-interval.js
+  // node_modules/@ratmath/core/src/rational-interval.js
   function hasTerminatingDecimal(value) {
     let denominator = value.denominator;
     while (denominator % 2n === 0n)
@@ -41066,7 +41066,7 @@ symbolicNamespace._proto = {=
     }
   }
 
-  // ../packages/core/src/rational-interval-set.js
+  // node_modules/@ratmath/core/src/rational-interval-set.js
   function asRational(value, name) {
     if (value === null)
       return null;
@@ -41379,7 +41379,7 @@ symbolicNamespace._proto = {=
     }
   }
 
-  // ../packages/core/src/range-arithmetic.js
+  // node_modules/@ratmath/core/src/range-arithmetic.js
   var ZERO = Rational.zero;
   var ONE = Rational.one;
   var RESULT_SCHEMA = "ratmath.range-operation-result@1";
@@ -41731,7 +41731,7 @@ symbolicNamespace._proto = {=
     });
   }
 
-  // ../packages/core/src/fraction.js
+  // node_modules/@ratmath/core/src/fraction.js
   class Fraction {
     #numerator;
     #denominator;
@@ -42152,7 +42152,7 @@ symbolicNamespace._proto = {=
     }
   }
 
-  // ../packages/core/src/fraction-interval.js
+  // node_modules/@ratmath/core/src/fraction-interval.js
   class FractionInterval {
     #low;
     #high;
@@ -42254,7 +42254,7 @@ symbolicNamespace._proto = {=
     }
   }
 
-  // ../packages/core/src/integer.js
+  // node_modules/@ratmath/core/src/integer.js
   function integerDivisor(other, zeroMessage) {
     if (!(other instanceof Integer)) {
       throw new TypeError("Floor division and modulo require an Integer divisor");
@@ -42599,7 +42599,7 @@ symbolicNamespace._proto = {=
     }
   }
 
-  // ../packages/core/src/certified-approximation.js
+  // node_modules/@ratmath/core/src/certified-approximation.js
   var Relation = Object.freeze({
     LESS: 1,
     EQUAL: 2,
@@ -43062,7 +43062,7 @@ symbolicNamespace._proto = {=
     });
   }
 
-  // ../packages/core/src/type-promotion.js
+  // node_modules/@ratmath/core/src/type-promotion.js
   class TypePromotion {
     constructor() {
       throw new TypeError("TypePromotion is a static utility class");
@@ -43207,7 +43207,7 @@ symbolicNamespace._proto = {=
     }
   }
 
-  // ../packages/core/src/numeral-system.js
+  // node_modules/@ratmath/core/src/numeral-system.js
   var NUMERAL_SYSTEM_SCHEMA = "ratmath.numeral-system@1";
   var NUMERAL_LIMITS = Object.freeze({ tokens: 256, tokenLength: 32, sourceLength: 65536, digits: 4096, bits: 16384 });
   var reserved = /[\s+\-*/^!()[\]:.#~_`?\\]/u;
@@ -43520,7 +43520,7 @@ symbolicNamespace._proto = {=
     }
   }
 
-  // ../packages/core/src/number-parser.js
+  // node_modules/@ratmath/core/src/number-parser.js
   function parseDecimalValue(input) {
     const [numerator, denominator] = parseDecimalParts(input);
     return new Rational(numerator, denominator);
@@ -46134,7 +46134,7 @@ symbolicNamespace._proto = {=
         pos: [position, position, position + match[0].length]
       };
     }
-    match = remaining.match(/^-?(?:0z\[\d+\]|0[a-zA-Z])[0-9a-zA-Z]+(?:\.[0-9a-zA-Z]*)?#[0-9a-zA-Z]+/);
+    match = remaining.match(/^-?(?:0z\[\d+\]|0[a-zA-Z])[0-9a-zA-Z]+(?:\.[0-9a-zA-Z]*)?#[0-9a-zA-Z]+(?:_\^[+-]?[0-9a-zA-Z]+)?/);
     if (match) {
       return {
         type: "Number",
@@ -46170,7 +46170,7 @@ symbolicNamespace._proto = {=
         pos: [position, position, position + match[0].length]
       };
     }
-    match = remaining.match(/^-?(?:0z\[\d+\]|0[a-zA-Z])[0-9a-zA-Z]*\.[0-9a-zA-Z]*/);
+    match = remaining.match(/^-?(?:0z\[\d+\]|0[a-zA-Z])[0-9a-zA-Z]*\.[0-9a-zA-Z]*(?:_\^[+-]?[0-9a-zA-Z]+)?/);
     if (match) {
       return {
         type: "Number",
@@ -46179,7 +46179,7 @@ symbolicNamespace._proto = {=
         pos: [position, position, position + match[0].length]
       };
     }
-    match = remaining.match(/^-?(?:0z\[\d+\]|0[a-zA-Z])[0-9a-zA-Z]*/);
+    match = remaining.match(/^-?(?:0z\[\d+\]|0[a-zA-Z])[0-9a-zA-Z]*(?:_\^[+-]?[0-9a-zA-Z]+)?/);
     if (match) {
       return {
         type: "Number",
@@ -88279,7 +88279,7 @@ ${indented.join(`,
     }
     if (shiftExp !== null && shiftExp.length) {
       const shift = parseBaseInteger(shiftExp, baseSystem, true);
-      const B = new Rational(BigInt(baseSystem.base), 1n);
+      const B = new Rational(BigInt(baseSystem.radix ?? baseSystem.base), 1n);
       const factor = shift >= 0n ? B.pow(shift) : new Rational(1, 1).divide(B.pow(-shift));
       value = value.multiply(factor);
     }
@@ -88633,7 +88633,7 @@ ${indented.join(`,
       }
       throw new Error(`Invalid continued fraction format: ${str}`);
     }
-    if (posStr.includes("_^")) {
+    if (posStr.includes("_^") && !/^(?:0z\[\d+\]|0[a-zA-Z])/.test(posStr)) {
       const shiftMatch = posStr.match(/^(.*?)_\^([+-]?\d(?:_?\d)*)$/);
       if (shiftMatch) {
         const baseVal = parseLiteral((isNegative ? "-" : "") + shiftMatch[1]);

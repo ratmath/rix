@@ -18,6 +18,11 @@
 
 ### Fixed
 
+- `_^` after a lowercase or `0z[n]` base prefix (`0xff_^1`, `0t1_^10`) was a
+  parse error. It now shifts by that base, with the exponent written in that
+  base (`0t1_^10` is 27, `0xff_^1` is 4080), as uppercase custom prefixes and
+  Core's `R` already did. Signed-radix systems shift by their radix.
+
 - `rix format` no longer changes what code means. Across the repository's RiX
   sources it changed 464 of 3,738 formattings: it split fused products
   (`1/2x` became `1/2 x`), joined lines after postfix checks (`##@ ...`),

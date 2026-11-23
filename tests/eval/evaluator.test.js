@@ -142,6 +142,23 @@ describe("RiX Evaluator", () => {
             expect(result).toBeInstanceOf(Integer);
             expect(result.value).toBe(12344000000n);
         });
+
+        test("radix shift after a base prefix shifts by that base, exponent in that base", () => {
+            const cases = [
+                ["0xff_^1;", "4080"],
+                ["0t1_^10;", "27"],
+                ["0t2_^-1;", "2/3"],
+                ["0b1.1_^11 + 1;", "13"],
+                ["0z[7]1_^2;", "49"],
+                ["0t0.#1_^1;", "3/2"],
+                ["-0xff_^1;", "-4080"],
+                ["0xa_^b;", String(10n * 16n ** 11n)],
+                ["2.5_^-2;", "1/40"],
+            ];
+            for (const [code, expected] of cases) {
+                expect(evalRix(code).toString()).toBe(expected);
+            }
+        });
     });
 
     describe("Base conversion operators", () => {
