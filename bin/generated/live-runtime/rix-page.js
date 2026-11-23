@@ -46134,7 +46134,7 @@ symbolicNamespace._proto = {=
         pos: [position, position, position + match[0].length]
       };
     }
-    match = remaining.match(/^-?(?:0z\[\d+\]|0[a-zA-Z])[0-9a-zA-Z]+(?:\.[0-9a-zA-Z]*)?#[0-9a-zA-Z]+/);
+    match = remaining.match(/^-?(?:0z\[\d+\]|0[a-zA-Z])[0-9a-zA-Z]+(?:\.[0-9a-zA-Z]*)?#[0-9a-zA-Z]+(?:_\^[+-]?[0-9a-zA-Z]+)?/);
     if (match) {
       return {
         type: "Number",
@@ -46170,7 +46170,7 @@ symbolicNamespace._proto = {=
         pos: [position, position, position + match[0].length]
       };
     }
-    match = remaining.match(/^-?(?:0z\[\d+\]|0[a-zA-Z])[0-9a-zA-Z]*\.[0-9a-zA-Z]*/);
+    match = remaining.match(/^-?(?:0z\[\d+\]|0[a-zA-Z])[0-9a-zA-Z]*\.[0-9a-zA-Z]*(?:_\^[+-]?[0-9a-zA-Z]+)?/);
     if (match) {
       return {
         type: "Number",
@@ -46179,7 +46179,7 @@ symbolicNamespace._proto = {=
         pos: [position, position, position + match[0].length]
       };
     }
-    match = remaining.match(/^-?(?:0z\[\d+\]|0[a-zA-Z])[0-9a-zA-Z]*/);
+    match = remaining.match(/^-?(?:0z\[\d+\]|0[a-zA-Z])[0-9a-zA-Z]*(?:_\^[+-]?[0-9a-zA-Z]+)?/);
     if (match) {
       return {
         type: "Number",
@@ -88396,7 +88396,7 @@ ${indented.join(`,
     }
     if (shiftExp !== null && shiftExp.length) {
       const shift = parseBaseInteger(shiftExp, baseSystem, true);
-      const B = new Rational(BigInt(baseSystem.base), 1n);
+      const B = new Rational(BigInt(baseSystem.radix ?? baseSystem.base), 1n);
       const factor = shift >= 0n ? B.pow(shift) : new Rational(1, 1).divide(B.pow(-shift));
       value = value.multiply(factor);
     }
@@ -88750,7 +88750,7 @@ ${indented.join(`,
       }
       throw new Error(`Invalid continued fraction format: ${str}`);
     }
-    if (posStr.includes("_^")) {
+    if (posStr.includes("_^") && !/^(?:0z\[\d+\]|0[a-zA-Z])/.test(posStr)) {
       const shiftMatch = posStr.match(/^(.*?)_\^([+-]?\d(?:_?\d)*)$/);
       if (shiftMatch) {
         const baseVal = parseLiteral((isNegative ? "-" : "") + shiftMatch[1]);

@@ -676,7 +676,7 @@ function tryMatchNumber(input, position) {
   }
 
   // Prefixed repeating radix expansion: 0b0.#01, 0xA.B#C.
-  match = remaining.match(/^-?(?:0z\[\d+\]|0[a-zA-Z])[0-9a-zA-Z]+(?:\.[0-9a-zA-Z]*)?#[0-9a-zA-Z]+/);
+  match = remaining.match(/^-?(?:0z\[\d+\]|0[a-zA-Z])[0-9a-zA-Z]+(?:\.[0-9a-zA-Z]*)?#[0-9a-zA-Z]+(?:_\^[+-]?[0-9a-zA-Z]+)?/);
   if (match) {
     return {
       type: "Number",
@@ -721,7 +721,7 @@ function tryMatchNumber(input, position) {
   }
 
   // Prefix Decimal: 0xA.B
-  match = remaining.match(/^-?(?:0z\[\d+\]|0[a-zA-Z])[0-9a-zA-Z]*\.[0-9a-zA-Z]*/);
+  match = remaining.match(/^-?(?:0z\[\d+\]|0[a-zA-Z])[0-9a-zA-Z]*\.[0-9a-zA-Z]*(?:_\^[+-]?[0-9a-zA-Z]+)?/);
   if (match) {
     return {
       type: "Number",
@@ -731,8 +731,9 @@ function tryMatchNumber(input, position) {
     };
   }
 
-  // Prefix Integer: 0xA, 0b101, 0z[10]10
-  match = remaining.match(/^-?(?:0z\[\d+\]|0[a-zA-Z])[0-9a-zA-Z]*/);
+  // Prefix Integer: 0xA, 0b101, 0z[10]10. Prefixed literals may end in a
+  // radix shift in their own base: 0t1_^10 is 1 * 3^3.
+  match = remaining.match(/^-?(?:0z\[\d+\]|0[a-zA-Z])[0-9a-zA-Z]*(?:_\^[+-]?[0-9a-zA-Z]+)?/);
   if (match) {
     return {
       type: "Number",

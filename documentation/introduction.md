@@ -1646,6 +1646,7 @@ The `#` character separates the non-repeating fractional digits from the infinit
 - `1_^2` is exactly `100`.
 - `3.14_^2` is exactly `314`.
 - `1_^-2` is exactly `1/100`.
+- After a base prefix the shift uses that base, with the exponent in that base: `0t1_^10` is `3^3 = 27`, `0xff_^1` is `255 * 16`.
 
 ### Continued Fractions (`.~`)
 

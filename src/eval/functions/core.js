@@ -470,7 +470,7 @@ function fromBaseString(baseStr, baseSystem) {
 
     if (shiftExp !== null && shiftExp.length) {
         const shift = parseBaseInteger(shiftExp, baseSystem, true);
-        const B = new Rational(BigInt(baseSystem.base), 1n);
+        const B = new Rational(BigInt(baseSystem.radix ?? baseSystem.base), 1n);
         const factor = shift >= 0n ? B.pow(shift) : new Rational(1, 1).divide(B.pow(-shift));
         value = value.multiply(factor);
     }
@@ -862,8 +862,9 @@ function parseLiteral(str) {
         throw new Error(`Invalid continued fraction format: ${str}`);
     }
 
-    // Radix shift: number_^exponent (e.g. 1_^2 = 100, 1_^-2 = 1/100)
-    if (posStr.includes("_^")) {
+    // Radix shift: number_^exponent (e.g. 1_^2 = 100, 1_^-2 = 1/100).
+    // Base-prefixed literals shift by their own base in fromBaseString below.
+    if (posStr.includes("_^") && !/^(?:0z\[\d+\]|0[a-zA-Z])/.test(posStr)) {
         const shiftMatch = posStr.match(/^(.*?)_\^([+-]?\d(?:_?\d)*)$/);
         if (shiftMatch) {
             const baseVal = parseLiteral((isNegative ? "-" : "") + shiftMatch[1]);
