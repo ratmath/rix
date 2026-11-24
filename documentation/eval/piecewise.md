@@ -159,6 +159,54 @@ rule, in the chain spelling that `@ratmath/analytic`'s `piecewise` reads.
 (.Pieces(Saw))[1][:region] ##@ == "n:x:!n+1"
 ```
 
+## Derivatives
+
+`F'` differentiates each rule on its own region and keeps the regions. Away
+from a breakpoint the value is the differentiated rule. At a breakpoint the
+derivative exists only when `F` is defined there, both neighboring rules meet
+that value, and the two differentiated rules agree; otherwise it is `_`.
+Higher derivatives apply the same test to the derivative below. Integers in
+a rule are constants, so `x^n` differentiates to `n x^(n-1)`.
+
+```{.rix exec=true id=piecewise-derivatives session=piecewise}
+S := {?: /x/ _:x:!0 ? x^2; x^3 };
+(.Pieces(S'))[2][:rule] ##@ == "3x^2";
+[S'(-1), S'(0), S''(0), S''(1)] ##@ == [-2, 0, _, 6];
+[Ramp'(1/2), Ramp'(0), Saw'(1/2), Saw'(3), Tri'(1)] ##@ == [1, _, 1, _, _]
+```
+
+Rules must be in the exact symbolic subset (`+ - * /`, integer powers, and
+integer powers of a constant such as `(-1)^n`), and regions must be chains:
+a predicate arm gives an error, because its breakpoints are unknown. Interval
+input works as for `F`: a point in the interval where `F'` does not exist
+gives `_`. `'F` (integration) is not implemented yet.
+
+## Bounds that are certified reals
+
+A bound may be an enclosure rather than a rational: a `RationalInterval`, a
+`CertifiedApproximation`, or a `.numerics.Refine` result. Comparisons use the
+whole enclosure, so an input that the enclosure does not separate from the
+bound gives `?`. Refining the bound, or the input, settles it.
+
+```{.rix exec=true id=piecewise-real-bounds session=piecewise}
+.Plugin.Load("numerics");
+p := .numerics.Refine(.numerics.Pi(), {= absoluteWidth=1/10^9, maxWork=200 })[:approximation];
+Wrap := {?: /x; n/ (n p):x:!((n+1) p) ? n };
+[Wrap(3), Wrap(4), Wrap(-1), Wrap(3.14159265?)] ##@ == [0, 1, -1, ?];
+(.Breaks(Wrap, 0:4))[2] ? :RationalInterval ##@ == 1
+```
+
+An unrefined real such as `.numerics.Pi()` is refused with a pointer to
+`.numerics.Refine`. Interval input whose interval overlaps an uncertain
+breakpoint gives `?`, and `.Breaks` lists such a breakpoint as its enclosure.
+
+## Lint
+
+Rule `RX1807` warns about an arm that earlier arms already cover, since the
+first arm that holds wins. It checks one-variable literals whose bounds are
+literal numbers, and periodic arms on an untyped integer whose copies tile the
+line, such as `n:x:!n+1`; anything else is left alone.
+
 ## How integers are solved
 
 Each arm's integers must be fixed by its own chains: some chain on a header
@@ -181,19 +229,17 @@ such as `n:x:_`, needs a type with a lower bound.
 
 ## Not implemented yet
 
-- **Multivariable analysis.** Breakpoints, `.Breaks` and interval input work
-  for one variable at a time. Box decomposition for separable regions and
-  cylindrical decomposition (in header order) for coupled regions are future
-  work; they would need a multivariable `Region` in Core first.
-- **Calculus.** `F'` and `'F` do not yet understand piecewise functions. The
-  plan: differentiate each rule on its own region, giving `_` at a breakpoint
-  unless both sides agree exactly in value and derivative.
+- **Multivariable analysis.** Breakpoints, `.Breaks`, interval input and
+  `F'` work for one variable at a time. Box decomposition for separable
+  regions and cylindrical decomposition (in header order) for coupled regions
+  are future work; they would need a multivariable `Region` in Core first.
+- **Integration.** `'F` refuses piecewise functions; the plan is to integrate
+  each rule over its piece and add the pieces.
 - **Analytic handoff.** `.Pieces` gives the shared chain text, but there is
   no one-call export to an `@ratmath/analytic` `PiecewiseFunction` yet.
-- **Shadowed-arm lint.** A lint rule for an arm that earlier arms already
-  cover is planned.
-- **Interval input with `pi` or `e` in bounds** is untested; bounds should be
-  rational.
+- **Automatic refinement of real bounds.** A real bound must be refined
+  first; the piecewise function does not refine it further when a comparison
+  comes out undecided.
 
 See the [design rationale](../rix-rationales.md#piecewise-literals-2026-11-24)
 for why the literal looks the way it does.

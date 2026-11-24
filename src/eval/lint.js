@@ -1,5 +1,7 @@
 import { parse } from "../parser/parser.js";
 import { posToLineCol } from "../parser/tokenizer.js";
+import { lowerNode } from "./lower.js";
+import { shadowedArms } from "./piecewise-regions.js";
 
 export const RIX_LINT_LEVELS = Object.freeze({
     essential: 1,
@@ -57,6 +59,7 @@ export const RIX_LINT_RULES = Object.freeze({
     RX1804: { level: 1, profiles: ["math"], title: "Unchecked divisor" },
     RX1805: { level: 1, profiles: ["math", "plugin"], title: "Polynomial division dependency" },
     RX1806: { level: 1, profiles: ["math", "plugin"], title: "Unbounded refinement" },
+    RX1807: { level: 2, profiles: ["core", "math"], title: "Piecewise arm can never be reached" },
     RX1901: { level: 1, profiles: ["plugin"], title: "Plugin header contract" },
     RX1902: { level: 2, profiles: ["plugin"], title: "Plugin export contract" },
     RX1903: { level: 1, profiles: ["plugin"], title: "Plugin mount contract" },
@@ -1167,6 +1170,29 @@ export function analyzeRix(source, options = {}) {
                     node,
                     `'${node.left.value}/${denominator.value}' is not read as a fraction here: what follows the denominator with no space joins the denominator.`,
                     `Add a space after the fraction, as in ${node.left.value}/${denominator.value} x, or parenthesise the denominator if that is what you mean.`,
+                );
+            }
+        }
+
+        if (node.type === "PiecewiseContainer") {
+            let shadowed = [];
+            try {
+                shadowed = shadowedArms(lowerNode(node));
+            } catch {
+                shadowed = [];
+            }
+            for (const { index, coveredBy } of shadowed) {
+                const arm = node.elements?.[index] ?? node;
+                const earlier = coveredBy.map((i) => i + 1).join(", ");
+                const isDefault = !(arm.type === "BinaryOperation" && arm.operator === "?");
+                emit(
+                    "RX1807",
+                    "warning",
+                    arm,
+                    isDefault
+                        ? `This default can never be reached: the arms before it (${earlier}) already cover every input.`
+                        : `Arm ${index + 1} can never be reached: earlier arms (${earlier}) already cover its region, and the first arm that holds wins.`,
+                    "Remove the arm, or move it before the arms that cover it if it should take priority.",
                 );
             }
         }

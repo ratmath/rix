@@ -12,8 +12,15 @@
   `_`, interval input gives the hull, and a certified value straddling a
   breakpoint gives `?`. `.Breaks(F, a:b)` and `.Pieces(F)` inspect the
   regions. Several variables (`/x, y; n, m/`) evaluate at points;
-  multivariable breakpoints, piecewise derivatives, and an analytic export are
-  not implemented yet. See `documentation/eval/piecewise.md`.
+  multivariable breakpoints, integration, and an analytic export are not
+  implemented yet. See `documentation/eval/piecewise.md`.
+- `F'` on a one-variable piecewise function differentiates each rule on its
+  region; at a breakpoint it is `_` unless value and slope match from both
+  sides. Symbolic `Deriv` also handles a constant exponent such as `x^n`.
+- Piecewise bounds may be enclosures (`RationalInterval`,
+  `CertifiedApproximation`, or a `.numerics.Refine` result), so regions can
+  use pi or e; undecided comparisons give `?`.
+- Lint rule `RX1807` warns about a piecewise arm that earlier arms cover.
 - Integer subtypes `Natural` (n >= 0), `Positive`, `Negative`, `Even` and
   `Odd`, and `.IntegerType(:Name, {= mod, residues, min, max })` for user
   subtypes; `.TypeRegister` also accepts `shape`, `next` and `prev`. Type

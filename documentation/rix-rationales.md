@@ -44,6 +44,15 @@ choices, made with James in the design thread of 2026-11-23 and 2026-11-24:
   regions get more general, less can be analysed: affine one-variable regions
   are exact, typed and searched integers stay exact, coupled and predicate
   regions answer only at points. See [piecewise functions](eval/piecewise.md).
+- **Derivatives are honest at breakpoints (added 2026-11-24).** `F'` keeps
+  `F`'s regions and differentiates each rule. A one-sided slope is not a
+  derivative, so at a breakpoint `F'` is `_` unless `F` is continuous there
+  and the two slopes agree; that is the same "no answer rather than a
+  convenient one" rule as gaps giving `_`.
+- **Real bounds come as enclosures (added 2026-11-24).** RiX has no ordered
+  pi, so a bound such as pi is a refined enclosure, and comparisons with it
+  are three-state like certified inputs. The literal does not refine bounds
+  itself, so the work a call does stays visible in the program.
 - **`region ? rule` keeps the whole union as the region.** In `{? }`, `?`
   binds tighter than `||`, and `?(` is the ask operator. Inside `{?:` both
   would turn natural arms into surprises, so the literal re-associates the

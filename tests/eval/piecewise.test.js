@@ -222,3 +222,63 @@ describe("piecewise construction errors", () => {
         expect(text("F := {?: /x; n::Natural/ n:x:_ ? n }; F(5/2)")).toBe("0");
     });
 });
+
+describe("piecewise derivatives", () => {
+    const RAMP = "Ramp := {?: /x/ _:x:!0 ? 0; 0:x:!1 ? x; 1 };";
+
+    test("each rule is differentiated on its own region", () => {
+        expect(text(`${RAMP} [Ramp'(-1), Ramp'(1/2), Ramp'(2)]`)).toBe("[0, 1, 0]");
+        expect(text("S := {?: /x/ _:x:!0 ? x^2; x^3 }; S'")).toBe("[Piecewise: {?: /x/ _:x:!0 ? 2x; 3x^2 }]");
+        expect(text("Saw := {?: /x; n/ n:x:!n+1 ? x - n }; [Saw'(1/2), Saw'(-5/2)]")).toBe("[1, 1]");
+    });
+
+    test("a breakpoint gives _ unless value and slope both match", () => {
+        expect(text(`${RAMP} [Ramp'(0), Ramp'(1)]`)).toBe("[_, _]");
+        expect(text("C := {?: /x/ _:x:!1 ? x^2; 2x - 1 }; C'(1)")).toBe("2");
+        expect(text("J := {?: /x/ _:x:!1 ? x^2; 2x }; J'(1)")).toBe("_");
+        expect(text("Saw := {?: /x; n/ n:x:!n+1 ? x - n }; Saw'(3)")).toBe("_");
+        expect(text("Tri := {?: /x; n/ 2n:x:!2n+1 ? x - 2n; 2n+1:x:!2n+2 ? 2n+2 - x }; [Tri'(1/2), Tri'(3/2), Tri'(1)]"))
+            .toBe("[1, -1, _]");
+        expect(text("H := {?: /x/ 0:x:1 ? x }; [H'(1/2), H'(0), H'(2)]")).toBe("[1, _, _]");
+    });
+
+    test("higher derivatives check the derivative below", () => {
+        expect(text("S := {?: /x/ _:x:!0 ? x^2; x^3 }; [S'(0), S''(0), S''(1)]")).toBe("[0, _, 6]");
+    });
+
+    test("integers in rules are constants, including as exponents", () => {
+        expect(text("Alt := {?: /x; n/ n:x:!n+1 ? (-1)^n * (x - n)^2 }; [Alt'(1/2), Alt'(3/2)]")).toBe("[1, -1]");
+        expect(text("P := {?: /x; n/ n:x:!n+1 ? x^n }; [P'(5/2), P'(1/2)]")).toBe("[5, 0]");
+    });
+
+    test("certified and interval inputs", () => {
+        expect(text(`${RAMP} [Ramp'(0.5?), Ramp'(1.0?), Ramp'(1/4:1/2), Ramp'(-1:1/2)]`)).toBe("[1, ?, 1, _]");
+    });
+
+    test("what is not supported says so", () => {
+        expect(fails("Q := {?: /x/ x^2 < 2 ? 1; 0 }; Q'")).toContain("F' needs region arms");
+        expect(fails("F := {?: /x, y/ 0:x:1 ? y }; F'")).toContain("one-variable");
+        expect(fails("R := {?: /x/ 0:x:1 ? 1 }; 'R")).toContain("Integrals of piecewise functions are not implemented yet");
+    });
+});
+
+describe("piecewise bounds that are enclosures", () => {
+    const PI = ".Plugin.Load(\"numerics\"); p := .numerics.Refine(.numerics.Pi(), {= absoluteWidth=1/10^9, maxWork=200 })[:approximation];";
+
+    test("a point is decided when it is clear of the enclosure", () => {
+        expect(text(`${PI} W := {?: /x/ 0:x:!p ? 1; 0 }; [W(3), W(4), W(355/113), W(3.14159265?)]`)).toBe("[1, 0, 0, ?]");
+    });
+
+    test("interval input and .Breaks report the uncertain breakpoint", () => {
+        expect(text(`${PI} W := {?: /x/ 0:x:!p ? 1; 0 }; [W(1:3), W(1:4)]`)).toBe("[1, ?]");
+        expect(text(`${PI} W := {?: /x/ 0:x:!p ? 1; 0 }; b := .Breaks(W, 0:4); [b[1], b[2] ? :RationalInterval, 3 < b[2]]`)).toBe("[0, 1, 1]");
+    });
+
+    test("integers are solved against enclosure bounds", () => {
+        expect(text(`${PI} W := {?: /x; n/ (n p):x:!((n+1) p) ? n }; [W(3), W(4), W(7), W(-1), W(-7)]`)).toBe("[0, 1, 2, -1, -3]");
+    });
+
+    test("an unrefined real is refused with a pointer to .numerics.Refine", () => {
+        expect(fails(".Plugin.Load(\"numerics\"); W := {?: /x/ 0:x:!.numerics.Pi() ? 1; 0 }; W(1)")).toContain(".numerics.Refine");
+    });
+});

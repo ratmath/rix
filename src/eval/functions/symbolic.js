@@ -596,7 +596,7 @@ function binary(fn, left, right) {
     return ir(fn, left, right);
 }
 
-function derivative(node, variable) {
+export function derivative(node, variable) {
     if (["LITERAL", "STRING", "NULL"].includes(node.fn)) return literal(0);
     if (node.fn === "RETRIEVE") return literal(node.args[0] === variable ? 1 : 0);
     if (node.fn === "OUTER_RETRIEVE") return literal(0);
@@ -611,7 +611,12 @@ function derivative(node, variable) {
         return binary("DIV", numerator, binary("POW", cloneIr(right), literal(2)));
     }
     if (node.fn === "POW") {
+        if (independentOf(node, variable)) return literal(0);
         const exponent = rationalFromIr(right);
+        if (!exponent && independentOf(right, variable)) {
+            // A symbolic exponent such as a piecewise integer n: n x^(n-1) x'.
+            return binary("MUL", binary("MUL", cloneIr(right), binary("POW", cloneIr(left), ir("SUB", cloneIr(right), literal(1)))), derivative(left, variable));
+        }
         if (!exponent || exponent.denominator !== 1n) throw new Error("Deriv supports only exact integer literal powers");
         return binary("MUL", binary("MUL", literal(exponent.numerator), binary("POW", cloneIr(left), literal(exponent.numerator - 1n))), derivative(left, variable));
     }
@@ -1410,7 +1415,9 @@ export const symbolicFunctions = {
         impl: ([value, order = 1, variable = null]) => {
             let result = value;
             const count = order instanceof Integer ? Number(order.value) : Number(order || 1);
-            for (let index = 0; index < count; index++) result = calculus(result, variable, "Deriv");
+            for (let index = 0; index < count; index++) {
+                result = typeof result?.__derive === "function" ? result.__derive(variable?.value ?? variable) : calculus(result, variable, "Deriv");
+            }
             return result;
         },
         pure: true,
@@ -1420,6 +1427,7 @@ export const symbolicFunctions = {
         impl: ([value, order = 1, variable = null]) => {
             let result = value;
             const count = order instanceof Integer ? Number(order.value) : Number(order || 1);
+            if (typeof result?.__derive === "function") throw new Error("Integrals of piecewise functions are not implemented yet");
             for (let index = 0; index < count; index++) result = calculus(result, variable, "Integrate");
             return result;
         },
