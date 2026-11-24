@@ -20,13 +20,13 @@ export const STANDARD_CAPABILITY_NAMES = Object.freeze([
     "DivRound", "DivUp", "DOCUMENT_TEMPLATE", "DoubleFactorial", "DUMP", "EMPHASIS", "EQ",
     "Equal", "ERROR", "EVAL", "Exact", "ExpressionApply", "ExpressionConstant", "ExpressionConstantInfo", "ExpressionDefinition", "ExpressionExpand", "EXPRESSIONFROMSPEC", "ExpressionHasExtendedConstants", "ExpressionHasScopedSymbols", "ExpressionKey", "ExpressionOperation", "ExpressionReal", "ExpressionRefine", "ExpressionVariable", "ExpressionVariableMatches", "ExpressionVariableSelector", "Factorial", "FIGURE", "Filter", "FIRST",
     "FORMULASHEET", "FRAGMENT", "GETEL", "Graphics", "Greater", "GreaterEqual", "GRID", "GT",
-    "GTE", "HEADING", "Hull", "If", "IMAGE", "ImmutableValue", "LinkedViews", "ImplicitRegion", "ImplicitRegionCheck", "ImplicitRegionRefine", "ImplicitTrace", "ImplicitTraceCheck", "ImplicitTraceRefine", "INFO", "INFOVALUE", "INSPECTSPEC",
+    "GTE", "HEADING", "Breaks", "Hull", "If", "IMAGE", "ImmutableValue", "LinkedViews", "ImplicitRegion", "ImplicitRegionCheck", "ImplicitRegionRefine", "ImplicitTrace", "ImplicitTraceCheck", "ImplicitTraceRefine", "INFO", "INFOVALUE", "INSPECTSPEC",
     "IntDiv", "INTEGRATE", "Intersect", "Intersects", "Interval", "IntervalLinearSolve", "IntervalNewtonBox", "IRANGE", "IsExpression", "JacobianBoxRange", "KEYOF", "KEYS", "KrawczykBox", "KrawczykCheck", "Lambda",
     "LAST", "LEN", "Less", "LessEqual", "LINEBREAK", "LINK", "LIST", "LISTITEM", "LIVEVIEW",
     "LogicSequent", "LogicCheckSequent", "LogicSequentTree", "LogicExactProposition", "LogicCheckProposition",
     "Loop", "LT", "LTE", "Map", "MATH", "MATHBLOCK", "MathBudgets", "MathDecodeJSON", "MathDecodeJSONL", "RealImportJSON", "RealExportJSON", "RealImportInfo", "RealRefineImported", "MathEncodeJSON", "MathEncodeJSONL", "MathEvaluate", "MathEvaluateCalculus", "MathInstantiate", "MathPolynomialCoefficients", "MathSubstitute", "Max", "Min", "Mod", "Mul", "MULTI",
     "MultivariateRangeCheck", "MultivariateRangeRequest", "Neg", "NEQ", "Not", "NotationParser", "NotEqual", "Or", "Pair", "PARAGRAPH", "Params",
-    "Pipe", "PipeExplicit", "PMap", "Poly", "Pow", "PowProd", "PRINT", "Product", "QUOTE",
+    "Pieces", "Pipe", "PipeExplicit", "PMap", "Poly", "Pow", "PowProd", "PRINT", "Product", "QUOTE",
     "RAND_NAME", "RANDOMSEED", "RangeAbsoluteValue", "RangeAdd", "RangeDivide", "RangeEvidence",
     "RangeIntegerPower", "RangeMultiply", "RangeNegate", "RangePolicy", "RangeReciprocal",
     "RangeSubtract", "RationalBox", "REACTIVEGRAPH", "Reduce", "RefinementCheck",
@@ -46,7 +46,7 @@ export const STANDARD_PLUGIN_SNAPSHOT = Object.freeze([]);
 
 export const STANDARD_DENIED_NAMES = Object.freeze([
     "HttpStream", "FileStream", "WebSocketStream", "BACKGROUND", "CapabilityRegister", "Core", "FILES", "Host", "ImportJS", "JSCall",
-    "NET", "Out", "Plugin", "Render", "Renderer", "TraitRegister", "TypeInstall", "TypeRegister",
+    "NET", "Out", "Plugin", "Render", "Renderer", "TraitRegister", "TypeInstall", "TypeRegister", "IntegerType",
 ]);
 
 export function createStandardSystemContext(source, { pluginIds = [], pluginNames = [] } = {}) {
