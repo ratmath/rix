@@ -41,6 +41,7 @@ const CHECK_MARKERS = new Map([
 const BRACE_HELP = Object.freeze({
     "{=": "Map container",
     "{?": "Case/conditional container",
+    "{?:": "Piecewise function: {?: /x; n/ region ? rule; ...; default }",
     "{;": "Lexical code block and capture boundary",
     "{|": "Set container",
     "{:": "Tuple or shaped container",
@@ -239,7 +240,7 @@ function discoverFolds(source, inputTokens) {
             }
             continue;
         }
-        if (["(", "[", "{", "{=", "{?", "{;", "{|", "{:", "{@", "{!", "{#", "{$", "{$$"].includes(token.value)) {
+        if (["(", "[", "{", "{=", "{?", "{?:", "{;", "{|", "{:", "{@", "{!", "{#", "{$", "{$$"].includes(token.value)) {
             stack.push(token);
         } else if ([")", "]", "}"].includes(token.value) && stack.length) {
             const open = stack.pop();

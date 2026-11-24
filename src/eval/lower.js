@@ -337,6 +337,9 @@ const LOWERERS = {
   },
 
   SemanticHas(node) {
+    if (node.chain && node.chain.length > 1) {
+      return ir("SEMANTIC_HAS", lowerNode(node.expression), node.name, node.chain);
+    }
     return ir("SEMANTIC_HAS", lowerNode(node.expression), node.name);
   },
 
@@ -906,6 +909,67 @@ const LOWERERS = {
       return lowerNode(el);
     });
     return constructorMeta ? ir("MAP_OBJ", constructorMeta, ...loweredElements) : ir("MAP_OBJ", ...loweredElements);
+  },
+
+  PiecewiseContainer(node) {
+    // `a || b ? rule` parses as `a || (b ? rule)` because `?` binds tighter
+    // than `||` and `&&`; inside a piecewise literal the whole union is the
+    // region, so rotate the `?` to the top of the arm.
+    const rotate = (element) => {
+      if (element?.type === "BinaryOperation" && (element.operator === "||" || element.operator === "&&")) {
+        const right = rotate(element.right);
+        if (right?.type === "BinaryOperation" && right.operator === "?" && right.__rotated) {
+          const merged = { ...element, right: right.left };
+          return { ...right, left: merged, __rotated: true };
+        }
+        return element;
+      }
+      if (element?.type === "BinaryOperation" && element.operator === "?") return { ...element, __rotated: true };
+      return element;
+    };
+    // `region ? (expr)...` tokenizes `?(` as the ask operator; in an arm the
+    // leftmost ask is the arm's `?`, so split it back into region and rule.
+    const splitAsk = (element) => {
+      if (element?.type === "Ask") {
+        return { region: element.target, rule: { type: "Grouping", expression: element.arg, pos: element.pos, original: element.original } };
+      }
+      if (element?.type === "BinaryOperation" && (element.operator === "||" || element.operator === "&&")) {
+        const inner = splitAsk(element.right);
+        return inner ? { region: { ...element, right: inner.region }, rule: inner.rule } : null;
+      }
+      if (element && typeof element === "object" && element.left && element.type !== "BinaryOperation" || element?.type === "BinaryOperation" && element.operator !== "?") {
+        const inner = splitAsk(element.left);
+        if (inner) return { region: inner.region, rule: { ...element, left: inner.rule } };
+      }
+      return null;
+    };
+    const arms = node.elements.map((raw) => {
+      let element = rotate(raw);
+      if (!(element?.type === "BinaryOperation" && element.operator === "?")) {
+        const split = splitAsk(element);
+        if (split) element = rotate({ type: "BinaryOperation", operator: "?", left: split.region, right: split.rule, pos: raw.pos, original: raw.original });
+      }
+      if (element?.type === "BinaryOperation" && element.operator === "?") {
+        return ir("DEFER", ir("CONDITION", lowerNode(element.left), lowerNode(element.right)));
+      }
+      if (element?.type === "SemanticHas") {
+        throw new Error("A piecewise arm reads 'region ? rule'; ':name' after '?' is a type test, so wrap the rule in parentheses");
+      }
+      return ir("DEFER", lowerNode(element));
+    });
+    const header = node.header;
+    const meta = {
+      variables: header.variables,
+      integers: header.integers.map((entry) => ({
+        name: entry.name,
+        types: entry.types.map((type) => ({ name: type.name, exclude: type.exclude === true })),
+        ...(entry.neighbor ? { neighbor: { relation: entry.neighbor.relation, of: entry.neighbor.of } } : {}),
+      })),
+      name: header.name ?? null,
+      traits: header.traits ?? [],
+      source: node.sourceText ?? null,
+    };
+    return ir("PIECEWISE", meta, ...arms);
   },
 
   CaseContainer(node) {

@@ -12,9 +12,9 @@ const SPACED_OPERATORS = new Set([
     "##@", "##:", "##!", "##_", "##!>",
 ]);
 const TIGHT_OPERATORS = new Set(["/", "//", "%", "^", "**", "..", ".", ":", "@", "'", "~"]);
-const OPENERS = new Set(["(", "[", "{", "{=", "{?", "{;", "{|", "{:", "{@", "{!", "{#", "{$", "{$$"]);
+const OPENERS = new Set(["(", "[", "{", "{=", "{?", "{?:", "{;", "{|", "{:", "{@", "{!", "{#", "{$", "{$$"]);
 const CLOSERS = new Set([")", "]", "}"]);
-const EXPANDABLE_OPENERS = new Set(["{=", "{?", "{;", "{|", "{:", "{@", "{!", "{"]);
+const EXPANDABLE_OPENERS = new Set(["{=", "{?", "{?:", "{;", "{|", "{:", "{@", "{!", "{"]);
 
 function rawToken(source, token) {
     return source.slice(token.pos[1], token.pos[2]);

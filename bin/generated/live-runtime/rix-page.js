@@ -38477,7 +38477,7 @@ symbolicNamespace._proto = {=
 `
   });
 
-  // ../packages/core/src/base-system.js
+  // node_modules/@ratmath/core/src/base-system.js
   class BaseSystem {
     #base;
     #radix;
@@ -38896,7 +38896,7 @@ symbolicNamespace._proto = {=
   BaseSystem.registerPrefix("m", BaseSystem.BASE60);
   BaseSystem.registerPrefix("y", BaseSystem.BASE64);
 
-  // ../packages/core/src/rational-literal.js
+  // node_modules/@ratmath/core/src/rational-literal.js
   var DIGITS = String.raw`\d(?:_?\d)*`;
   var MAX_EXPANDED_DIGITS = 1e5;
   function inputString(input, label = "number") {
@@ -39041,7 +39041,7 @@ symbolicNamespace._proto = {=
     return [p, q];
   }
 
-  // ../packages/core/src/bigint.js
+  // node_modules/@ratmath/core/src/bigint.js
   function toExactBigInt(value, label = "Value") {
     if (typeof value === "number") {
       if (!Number.isSafeInteger(value)) {
@@ -39058,7 +39058,7 @@ symbolicNamespace._proto = {=
     throw new TypeError(`${label} must be an integer number, string, or bigint`);
   }
 
-  // ../packages/core/src/reduced-arithmetic.js
+  // node_modules/@ratmath/core/src/reduced-arithmetic.js
   function gcd(a, b) {
     if (a < 0n)
       a = -a;
@@ -39103,7 +39103,7 @@ symbolicNamespace._proto = {=
     return den < 0n ? [-n, -den] : [n, den];
   }
 
-  // ../packages/core/src/rational.js
+  // node_modules/@ratmath/core/src/rational.js
   var POWERS_OF_5 = Object.freeze({
     16: 5n ** 16n,
     8: 5n ** 8n,
@@ -40426,7 +40426,7 @@ symbolicNamespace._proto = {=
     }
   }
 
-  // ../packages/core/src/rational-interval.js
+  // node_modules/@ratmath/core/src/rational-interval.js
   function hasTerminatingDecimal(value) {
     let denominator = value.denominator;
     while (denominator % 2n === 0n)
@@ -41066,7 +41066,7 @@ symbolicNamespace._proto = {=
     }
   }
 
-  // ../packages/core/src/rational-interval-set.js
+  // node_modules/@ratmath/core/src/rational-interval-set.js
   function asRational(value, name) {
     if (value === null)
       return null;
@@ -41379,7 +41379,7 @@ symbolicNamespace._proto = {=
     }
   }
 
-  // ../packages/core/src/range-arithmetic.js
+  // node_modules/@ratmath/core/src/range-arithmetic.js
   var ZERO = Rational.zero;
   var ONE = Rational.one;
   var RESULT_SCHEMA = "ratmath.range-operation-result@1";
@@ -41731,7 +41731,7 @@ symbolicNamespace._proto = {=
     });
   }
 
-  // ../packages/core/src/fraction.js
+  // node_modules/@ratmath/core/src/fraction.js
   class Fraction {
     #numerator;
     #denominator;
@@ -42152,7 +42152,7 @@ symbolicNamespace._proto = {=
     }
   }
 
-  // ../packages/core/src/fraction-interval.js
+  // node_modules/@ratmath/core/src/fraction-interval.js
   class FractionInterval {
     #low;
     #high;
@@ -42254,7 +42254,7 @@ symbolicNamespace._proto = {=
     }
   }
 
-  // ../packages/core/src/integer.js
+  // node_modules/@ratmath/core/src/integer.js
   function integerDivisor(other, zeroMessage) {
     if (!(other instanceof Integer)) {
       throw new TypeError("Floor division and modulo require an Integer divisor");
@@ -42599,7 +42599,7 @@ symbolicNamespace._proto = {=
     }
   }
 
-  // ../packages/core/src/certified-approximation.js
+  // node_modules/@ratmath/core/src/certified-approximation.js
   var Relation = Object.freeze({
     LESS: 1,
     EQUAL: 2,
@@ -43062,7 +43062,7 @@ symbolicNamespace._proto = {=
     });
   }
 
-  // ../packages/core/src/type-promotion.js
+  // node_modules/@ratmath/core/src/type-promotion.js
   class TypePromotion {
     constructor() {
       throw new TypeError("TypePromotion is a static utility class");
@@ -43207,7 +43207,7 @@ symbolicNamespace._proto = {=
     }
   }
 
-  // ../packages/core/src/numeral-system.js
+  // node_modules/@ratmath/core/src/numeral-system.js
   var NUMERAL_SYSTEM_SCHEMA = "ratmath.numeral-system@1";
   var NUMERAL_LIMITS = Object.freeze({ tokens: 256, tokenLength: 32, sourceLength: 65536, digits: 4096, bits: 16384 });
   var reserved = /[\s+\-*/^!()[\]:.#~_`?\\]/u;
@@ -43520,7 +43520,7 @@ symbolicNamespace._proto = {=
     }
   }
 
-  // ../packages/core/src/number-parser.js
+  // node_modules/@ratmath/core/src/number-parser.js
   function parseDecimalValue(input) {
     const [numerator, denominator] = parseDecimalParts(input);
     return new Rational(numerator, denominator);
@@ -46640,6 +46640,20 @@ symbolicNamespace._proto = {=
         if (specHeader) {
           return specHeader;
         }
+      }
+      if (sigil === "?" && after === ":") {
+        const afterColon = input[position + 3];
+        if (!isWhitespace(afterColon) && afterColon !== "/") {
+          const { line, col } = posToLineCol(input, position);
+          throw new Error(`Piecewise opener '{?:' must be followed by a space and a /variables; integers/ header at line ${line}:${col}`);
+        }
+        return {
+          type: "Symbol",
+          original: "{?:",
+          value: "{?:",
+          containerName: null,
+          pos: [position, position, position + 3]
+        };
       }
       if (isWhitespace(after) || after === "/") {
         return {
@@ -58186,6 +58200,7 @@ format:
     "}": { precedence: 0, type: "grouping" },
     "{=": { precedence: 0, type: "brace_sigil" },
     "{?": { precedence: 0, type: "brace_sigil" },
+    "{?:": { precedence: 0, type: "brace_sigil" },
     "{;": { precedence: 0, type: "brace_sigil" },
     "{|": { precedence: 0, type: "brace_sigil" },
     "{:": { precedence: 0, type: "brace_sigil" },
@@ -58210,6 +58225,23 @@ format:
     "|": { precedence: 0, type: "separator" },
     "|}": { precedence: 0, type: "separator" }
   };
+  function semanticChainFromIntervalDivision(node) {
+    if (node?.type !== "IntervalDivision")
+      return null;
+    const head = node.interval?.type === "String" && node.interval.kind === "colon" ? [{ name: node.interval.value, exclude: false }] : semanticChainFromIntervalDivision(node.interval);
+    if (!head)
+      return null;
+    let link = node.count;
+    let exclude = false;
+    if (link?.type === "UnaryOperation" && link.operator === "!") {
+      exclude = true;
+      link = link.operand;
+    }
+    if (link?.type !== "SystemIdentifier" && link?.type !== "UserIdentifier")
+      return null;
+    const name = String(link.original ?? link.name).trim();
+    return [...head, { name, exclude }];
+  }
 
   class RixParseError extends Error {
     constructor(message, options = {}) {
@@ -58703,7 +58735,7 @@ format:
             return this.parseMathematicalContext();
           } else if (token.value === ":::") {
             return this.parseSymbolicVariable(false);
-          } else if (token.value === "{=" || token.value === "{?" || token.value === "{;" || token.value === "{|" || token.value === "{:" || token.value === "{@" || token.value === "{#" || token.value === "{.." || token.value === "{>" || token.value === "{~" || token.value === "{^" || token.value === "{$" || token.value === "{$$") {
+          } else if (token.value === "{=" || token.value === "{?" || token.value === "{?:" || token.value === "{;" || token.value === "{|" || token.value === "{:" || token.value === "{@" || token.value === "{#" || token.value === "{.." || token.value === "{>" || token.value === "{~" || token.value === "{^" || token.value === "{$" || token.value === "{$$") {
             if (token.value === "{#") {
               return this.parseSystemSpecLiteral();
             }
@@ -58745,7 +58777,7 @@ format:
               });
             }
             const nextVal = this.current.value;
-            if (nextVal === "{" || nextVal === "{;" || nextVal === "{?" || nextVal === "{=" || nextVal === "{|" || nextVal === "{:" || nextVal === "{@" || nextVal === "{#" || nextVal === "{$" || nextVal === "{$$" || nextVal === "{.." || nextVal === "{^" || nextVal === "{>") {
+            if (nextVal === "{" || nextVal === "{;" || nextVal === "{?" || nextVal === "{?:" || nextVal === "{=" || nextVal === "{|" || nextVal === "{:" || nextVal === "{@" || nextVal === "{#" || nextVal === "{$" || nextVal === "{$$" || nextVal === "{.." || nextVal === "{^" || nextVal === "{>") {
               let inner;
               if (nextVal === "{") {
                 inner = this.parseBraceContainer();
@@ -59423,6 +59455,16 @@ format:
           return this.createNode("SemanticHas", {
             expression: left,
             name: right.value,
+            pos: left.pos,
+            original: left.original + operator.original + right.original
+          });
+        }
+        const semanticChain = semanticChainFromIntervalDivision(right);
+        if (semanticChain) {
+          return this.createNode("SemanticHas", {
+            expression: left,
+            name: semanticChain[0].name,
+            chain: semanticChain,
             pos: left.pos,
             original: left.original + operator.original + right.original
           });
@@ -60648,6 +60690,91 @@ format:
         original: this.source ? this.source.slice(startToken.pos[0], end) : startToken.original
       });
     }
+    parsePiecewiseHeader() {
+      if (this.current.value !== "/") {
+        this.error("A piecewise literal needs a /variables; integers/ header, as in {?: /x; n/ n:x:!n+1 ? x - n }");
+      }
+      const startToken = this.current;
+      this.advance();
+      const readName = (what) => {
+        const token = this.current;
+        if (token.type !== "Identifier")
+          this.error(`Expected ${what} name in piecewise header`);
+        const name = token.original.trim();
+        const pattern = what === "type" ? /^[A-Za-z][A-Za-z0-9_]*$/ : /^[a-z][A-Za-z0-9_]*$/;
+        if (!pattern.test(name))
+          this.error(`Piecewise ${what} names must start with a ${what === "type" ? "letter" : "lowercase letter"} and contain only letters, digits, or underscores`);
+        this.advance();
+        return name;
+      };
+      const variables = [readName("variable")];
+      while (this.current.value === ",") {
+        this.advance();
+        variables.push(readName("variable"));
+      }
+      const integers = [];
+      if (this.current.value === ";") {
+        this.advance();
+        do {
+          if (this.current.value === ",")
+            this.advance();
+          const name = readName("integer");
+          const types = [];
+          while (this.current.value === "::") {
+            this.advance();
+            let exclude = false;
+            if (this.current.value === "!") {
+              exclude = true;
+              this.advance();
+            }
+            types.push({ name: readName("type"), exclude });
+          }
+          let neighbor = null;
+          if ([">", ">=", "<", "<="].includes(this.current.value)) {
+            const relation = this.current.value;
+            this.advance();
+            neighbor = { relation, of: readName("integer") };
+          }
+          integers.push({ name, types, ...neighbor ? { neighbor } : {} });
+        } while (this.current.value === ",");
+      }
+      let name = null;
+      const traits = [];
+      while (this.current.value !== "/" && this.current.type !== "End") {
+        if (this.current.type === "ActiveBaseNumber" && /^#[A-Za-z][A-Za-z0-9_]*$/.test(this.current.original.trim())) {
+          if (name !== null)
+            this.error("Header may only specify one name");
+          name = this.current.original.trim().slice(1);
+          this.advance();
+          continue;
+        }
+        if (this.current.value === "#") {
+          this.advance();
+          if (name !== null)
+            this.error("Header may only specify one name");
+          name = this.parseHeaderDirectiveName();
+          continue;
+        }
+        if (this.current.value === ":") {
+          this.advance();
+          traits.push(this.parseHeaderDirectiveName());
+          continue;
+        }
+        this.error(`Invalid directive ${JSON.stringify(this.current.value)} in piecewise header; expected '; integers', '#name', or ':trait'`);
+      }
+      if (this.current.value !== "/")
+        this.error("Unterminated piecewise /.../ header");
+      const end = this.current.pos[2];
+      this.advance();
+      return this.createNode("PiecewiseHeader", {
+        variables,
+        integers,
+        name,
+        traits,
+        pos: [startToken.pos[0], startToken.pos[1], end],
+        original: this.source ? this.source.slice(startToken.pos[0], end) : startToken.original
+      });
+    }
     parseValueOutfit() {
       const startToken = this.current;
       this.advance();
@@ -60676,6 +60803,7 @@ format:
         "{..": "ArrayContainer",
         "{=": "MapContainer",
         "{?": "CaseContainer",
+        "{?:": "PiecewiseContainer",
         "{;": "BlockContainer",
         "{|": "SetContainer",
         "{:": "TupleContainer",
@@ -60687,7 +60815,7 @@ format:
         "{~": "HaloContainer"
       };
       const nodeType = sigilTypeMap[effectiveSigil];
-      const temporalSigils = new Set(["{?", "{;", "{@", "{$", "{$$"]);
+      const temporalSigils = new Set(["{?", "{?:", "{;", "{@", "{$", "{$$"]);
       const isTemporal = temporalSigils.has(effectiveSigil);
       const closerMap = {
         "{|": ["|}", "}"]
@@ -60712,7 +60840,7 @@ format:
       const pushHoleSlot = () => {
         elements.push(this.createNode("Hole", { original: "" }));
       };
-      const header = effectiveSigil === "{=" || effectiveSigil === "{|" || effectiveSigil === "{:" || effectiveSigil === "{.." ? this.parseSemanticHeader() : null;
+      const header = effectiveSigil === "{?:" ? this.parsePiecewiseHeader() : effectiveSigil === "{=" || effectiveSigil === "{|" || effectiveSigil === "{:" || effectiveSigil === "{.." ? this.parseSemanticHeader() : null;
       const imports = (effectiveSigil === "{;" || effectiveSigil === "{@" || effectiveSigil === "{$" || effectiveSigil === "{$$") && this.startsImportHeader() ? this.parseImportHeader() : [];
       const elements = [];
       const parseElement = effectiveSigil === "{=" ? () => this.parseMapConstructorEntry() : effectiveSigil === "{|" || effectiveSigil === "{:" || effectiveSigil === "{.." ? () => this.parseCapturedConstructorElement() : isTemporal ? () => this.parseCommaSequenceExpression(0) : () => this.parseExpression(0);
@@ -60771,7 +60899,9 @@ format:
       if (!isCloser(this.current.value)) {
         this.error(`Expected closing ${primaryCloser} for ${nodeType}`);
       }
+      const closerToken = this.current;
       this.advance();
+      const sourceText = effectiveSigil === "{?:" && this.source ? this.source.slice(startToken.pos[1], closerToken.pos[2]) : null;
       if (effectiveSigil === "{~" && (elements.length < 2 || elements.length > 3)) {
         this.error("Halo neighborhood requires target, positive epsilon, and optional limits map");
       }
@@ -60784,6 +60914,7 @@ format:
         ...effectiveSigil === "{$" && options.asyncLimit !== undefined ? { concurrencyLimit: options.asyncLimit } : {},
         ...effectiveSigil === "{$" && options.asyncTimeout !== undefined ? { timeoutSeconds: options.asyncTimeout } : {},
         ...header ? { header } : {},
+        ...sourceText ? { sourceText } : {},
         ...imports.length > 0 ? { imports } : {},
         elements,
         pos: startToken.pos,
@@ -70223,6 +70354,9 @@ ${indentStr})`;
           return `{= ${entries.join(", ")} }`;
         });
       }
+      if (val.__piecewise?.source) {
+        return `[Piecewise: ${val.__piecewise.source}]`;
+      }
       if (val.type === "function" || val.type === "lambda") {
         return formatCallablePreview(val, val.type === "lambda" ? "Lambda" : "Function");
       }
@@ -77429,6 +77563,211 @@ ${indented.join(`,
     return captureResolvedValue(value, mode);
   }
 
+  // src/runtime/integer-types.js
+  var INTEGER_SEARCH_BUDGET = 1e4;
+  var mod = (a, m) => (a % m + m) % m;
+  var gcd3 = (a, b) => {
+    a = a < 0n ? -a : a;
+    b = b < 0n ? -b : b;
+    while (b)
+      [a, b] = [b, a % b];
+    return a;
+  };
+  var lcm2 = (a, b) => a / gcd3(a, b) * b;
+  var big = (value) => {
+    if (value === null || value === undefined)
+      return null;
+    if (typeof value === "bigint")
+      return value;
+    if (typeof value === "number")
+      return BigInt(value);
+    if (value instanceof Integer)
+      return value.value;
+    if (value instanceof Rational) {
+      if (value.denominator !== 1n)
+        throw new Error("Integer type shapes need integer bounds and residues");
+      return value.numerator;
+    }
+    if (typeof value === "string")
+      return BigInt(value);
+    throw new Error("Integer type shapes need integer bounds and residues");
+  };
+  function normalizeShape(spec = {}) {
+    const m = big(spec.mod) ?? 1n;
+    if (m <= 0n)
+      throw new Error("An integer type's modulus must be positive");
+    const raw = spec.residues === undefined || spec.residues === null ? [0n] : spec.residues;
+    const residues = [...new Set((m === 1n ? [0n] : raw.map((r) => mod(big(r), m))).map(String))].map((r) => BigInt(r)).sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
+    if (residues.length === 0)
+      throw new Error("An integer type needs at least one residue");
+    const min = big(spec.min);
+    const max = big(spec.max);
+    let shape = { mod: m, residues, min, max };
+    for (let d = 1n;d < m; d++) {
+      if (m % d !== 0n)
+        continue;
+      const reduced = [...new Set(residues.map((r) => String(mod(r, d))))].map((r) => BigInt(r));
+      const expanded = [];
+      for (let k = 0n;k < m / d; k++)
+        for (const r of reduced)
+          expanded.push(r + k * d);
+      if (expanded.length === residues.length) {
+        shape = { mod: d, residues: reduced.sort((a, b) => a < b ? -1 : a > b ? 1 : 0), min, max };
+        break;
+      }
+    }
+    return Object.freeze(shape);
+  }
+  var INTEGER_SHAPES = Object.freeze({
+    integer: normalizeShape({}),
+    natural: normalizeShape({ min: 0n }),
+    positive: normalizeShape({ min: 1n }),
+    negative: normalizeShape({ max: -1n }),
+    even: normalizeShape({ mod: 2n, residues: [0n] }),
+    odd: normalizeShape({ mod: 2n, residues: [1n] })
+  });
+  var BUILTIN_INTEGER_TYPE_NAMES = Object.freeze(["Natural", "Positive", "Negative", "Even", "Odd"]);
+  function shapeHas(shape, n) {
+    if (shape.min !== null && n < shape.min)
+      return false;
+    if (shape.max !== null && n > shape.max)
+      return false;
+    return shape.residues.includes(mod(n, shape.mod));
+  }
+  function intersectShapes(a, b) {
+    const m = lcm2(a.mod, b.mod);
+    const residues = [];
+    for (let r = 0n;r < m; r++) {
+      if (a.residues.includes(mod(r, a.mod)) && b.residues.includes(mod(r, b.mod)))
+        residues.push(r);
+    }
+    const min = a.min === null ? b.min : b.min === null ? a.min : a.min > b.min ? a.min : b.min;
+    const max = a.max === null ? b.max : b.max === null ? a.max : a.max < b.max ? a.max : b.max;
+    if (residues.length === 0 || min !== null && max !== null && min > max)
+      return { empty: true };
+    return normalizeShape({ mod: m, residues, min, max });
+  }
+  function complementShape(shape) {
+    const hasBounds = shape.min !== null || shape.max !== null;
+    const restricted = shape.residues.length < Number(shape.mod);
+    if (!hasBounds) {
+      if (!restricted)
+        return { empty: true };
+      const residues = [];
+      for (let r = 0n;r < shape.mod; r++)
+        if (!shape.residues.includes(r))
+          residues.push(r);
+      return normalizeShape({ mod: shape.mod, residues });
+    }
+    if (restricted)
+      return null;
+    if (shape.min !== null && shape.max === null)
+      return normalizeShape({ max: shape.min - 1n });
+    if (shape.max !== null && shape.min === null)
+      return normalizeShape({ min: shape.max + 1n });
+    return null;
+  }
+  function shapeNext(shape, n, strict = false) {
+    let start = strict ? n + 1n : n;
+    if (shape.min !== null && start < shape.min)
+      start = shape.min;
+    const base = start - mod(start, shape.mod);
+    for (const offset of [0n, shape.mod]) {
+      for (const r of shape.residues) {
+        const candidate = base + offset + r;
+        if (candidate >= start) {
+          return shape.max !== null && candidate > shape.max ? null : candidate;
+        }
+      }
+    }
+    return null;
+  }
+  function shapePrev(shape, n, strict = false) {
+    let start = strict ? n - 1n : n;
+    if (shape.max !== null && start > shape.max)
+      start = shape.max;
+    const base = start - mod(start, shape.mod);
+    for (const offset of [0n, -shape.mod]) {
+      for (let i = shape.residues.length - 1;i >= 0; i--) {
+        const candidate = base + offset + shape.residues[i];
+        if (candidate <= start) {
+          return shape.min !== null && candidate < shape.min ? null : candidate;
+        }
+      }
+    }
+    return null;
+  }
+  function buildIntegerConstraint(chain, resolve) {
+    let shape = INTEGER_SHAPES.integer;
+    let empty = false;
+    const tests = [];
+    const hooks = [];
+    for (const { name, exclude } of chain) {
+      const entry = resolve(name);
+      if (entry.shape) {
+        const part = exclude ? complementShape(entry.shape) : entry.shape;
+        if (part === null) {
+          tests.push((n) => !shapeHas(entry.shape, n));
+          continue;
+        }
+        if (part.empty) {
+          empty = true;
+          continue;
+        }
+        const joined = intersectShapes(shape, part);
+        if (joined.empty)
+          empty = true;
+        else
+          shape = joined;
+        continue;
+      }
+      tests.push(exclude ? (n) => !entry.test(n) : entry.test);
+      if (!exclude && (entry.next || entry.prev))
+        hooks.push(entry);
+    }
+    const text = chain.length ? chain.map((t) => `::${t.exclude ? "!" : ""}${t.name}`).join("") : "::Integer";
+    if (empty) {
+      return { empty: true, shape: null, test: () => false, next: () => null, prev: () => null, text };
+    }
+    if (tests.length === 0) {
+      return {
+        shape,
+        test: (n) => shapeHas(shape, n),
+        next: (n, strict = false) => shapeNext(shape, n, strict),
+        prev: (n, strict = false) => shapePrev(shape, n, strict),
+        text
+      };
+    }
+    const test = (n) => shapeHas(shape, n) && tests.every((t) => t(n));
+    const hook = hooks.length === 1 && tests.length === 1 ? hooks[0] : null;
+    const step = (n, strict, direction) => {
+      let candidate = direction > 0 ? shapeNext(shape, n, strict) : shapePrev(shape, n, strict);
+      for (let i = 0;candidate !== null && i < INTEGER_SEARCH_BUDGET; i++) {
+        if (test(candidate))
+          return candidate;
+        if (hook && (direction > 0 ? hook.next : hook.prev)) {
+          const jumped = direction > 0 ? hook.next(candidate) : hook.prev(candidate);
+          if (jumped === null)
+            return null;
+          candidate = jumped;
+          if (test(candidate))
+            return candidate;
+        }
+        candidate = direction > 0 ? shapeNext(shape, candidate, true) : shapePrev(shape, candidate, true);
+      }
+      if (candidate === null)
+        return null;
+      throw new Error(`No member of ${text} found within ${INTEGER_SEARCH_BUDGET} steps ${direction > 0 ? "above" : "below"} ${n}; a bound such as ::Natural keeps the search finite`);
+    };
+    return {
+      shape: null,
+      test,
+      next: (n, strict = false) => step(n, strict, 1),
+      prev: (n, strict = false) => step(n, strict, -1),
+      text
+    };
+  }
+
   // src/runtime/range-set-interchange.js
   var RANGE_SET_INTERCHANGE_VERSION = 1;
   var RANGE_SET_STABLE_VERSIONS = Object.freeze([1]);
@@ -78620,6 +78959,15 @@ ${indented.join(`,
     registerType({ name: "Vector", nativeType: "vector", defaultTraits: [], convert: (value) => value?.type === "vector" ? value : null, validate: (value) => value?.type === "vector", proto: () => makeProto([["Describe", valueMethod("Describe", () => stringObj2("type:Vector"))]]) });
     registerType({ name: "Covector", nativeType: "covector", defaultTraits: [], convert: (value) => value?.type === "covector" ? value : null, validate: (value) => value?.type === "covector", proto: () => makeProto([["Describe", valueMethod("Describe", () => stringObj2("type:Covector"))]]) });
     registerType({ name: "Tensor", nativeType: "tensor", defaultTraits: [], convert: (value) => value?.type === "tensor" ? value : null, validate: (value) => value?.type === "tensor", proto: () => makeProto([["Describe", valueMethod("Describe", () => stringObj2("type:Tensor"))]]) });
+    for (const [name, description] of [
+      ["Natural", "integers n >= 0"],
+      ["Positive", "integers n >= 1"],
+      ["Negative", "integers n <= -1"],
+      ["Even", "even integers"],
+      ["Odd", "odd integers"]
+    ]) {
+      registerType(integerSubtypeSpec(name, INTEGER_SHAPES[name.toLowerCase()], description));
+    }
     for (const name of typeRegistry.list())
       builtinTypeNames.add(semanticNameKey(name));
     builtinsRegistered = true;
@@ -78797,8 +79145,14 @@ ${indented.join(`,
     if (!spec || spec.type !== "map" || !(spec.entries instanceof Map)) {
       throw new Error("TypeRegister expects a map spec");
     }
+    const shapeValue = mapGet(spec, "shape");
+    if (shapeValue !== undefined && shapeValue !== null) {
+      return registerIntegerTypeFromRix(mapGet(spec, "name"), shapeValue, context, spec);
+    }
     const proto = protoFromRixMap(mapGet(spec, "proto"), context) || makeProto();
     const registration = {
+      next: captureHook(mapGet(spec, "next") || null, context),
+      prev: captureHook(mapGet(spec, "prev") || null, context),
       name: colonName(mapGet(spec, "name")),
       aliases: listNames(mapGet(spec, "aliases")),
       nativeType: colonName(mapGet(spec, "nativeType")),
@@ -78824,6 +79178,79 @@ ${indented.join(`,
     return entry;
   }
   registerBuiltinSemanticTypes();
+  function integerSubtypeSpec(name, shape, description = "") {
+    return {
+      name,
+      nativeType: "integer",
+      parent: "Integer",
+      defaultTraits: ["integer", "rational", "number", "ordered"],
+      shape,
+      convert: (value) => value instanceof Integer && shapeHas(shape, value.value) ? value : null,
+      validate: (value) => value instanceof Integer && shapeHas(shape, value.value),
+      proto: () => makeProto([["Describe", valueMethod("Describe", () => stringObj2(`type:${name}`))]]),
+      description
+    };
+  }
+  function shapeFromRixMap(value) {
+    if (!value || value.type !== "map" || !(value.entries instanceof Map)) {
+      throw new Error("An integer type shape is a map such as {= mod=4, residues=[3], min=0 }");
+    }
+    const residues = mapGet(value, "residues");
+    const list = residues === undefined || residues === null ? undefined : isRixList(residues) ? residues.values : [residues];
+    return normalizeShape({
+      mod: mapGet(value, "mod") ?? undefined,
+      residues: list,
+      min: mapGet(value, "min") ?? null,
+      max: mapGet(value, "max") ?? null
+    });
+  }
+  function registerIntegerTypeFromRix(nameValue, shapeValue, context = null, spec = null) {
+    const name = colonName(nameValue);
+    if (!name)
+      throw new Error("IntegerType needs a name such as :ThreeMod4");
+    const shape = shapeFromRixMap(shapeValue);
+    const registration = integerSubtypeSpec(name, shape);
+    if (spec) {
+      const proto = protoFromRixMap(mapGet(spec, "proto"), context);
+      if (proto)
+        registration.proto = () => proto;
+      const aliases = listNames(mapGet(spec, "aliases"));
+      if (aliases.length)
+        registration.aliases = aliases;
+    }
+    const entry = typeRegistry.has(name) ? replaceRegisteredType(registration) : registerType(registration);
+    if (context?.getEnv && context?.setEnv) {
+      const registered = context.getEnv("__rix_registered_types__", new Set);
+      registered.add(entry.name);
+      context.setEnv("__rix_registered_types__", registered);
+    }
+    return entry;
+  }
+  function resolveIntegerType(name, context = null, evaluate = null) {
+    if (semanticNameKey(name) === "integer")
+      return { shape: INTEGER_SHAPES.integer };
+    const entry = typeRegistry.get(name);
+    if (!entry || !typeKnownInContext(name, context))
+      throw new Error(`Unknown semantic type: ${name}`);
+    if (entry.shape)
+      return { shape: entry.shape };
+    if (!entry.validate)
+      throw new Error(`Type ${entry.name} has no shape or validate hook, so it cannot restrict an integer`);
+    const asBig = (value) => {
+      if (value === null || value === undefined)
+        return null;
+      if (value instanceof Integer)
+        return value.value;
+      if (value instanceof Rational && value.denominator === 1n)
+        return value.numerator;
+      throw new Error(`Type ${entry.name}'s next/prev hook must return an integer or _`);
+    };
+    return {
+      test: (n) => truthy(invokeMaybeCallable(entry.validate, [new Integer(n)], context, evaluate)),
+      ...entry.next ? { next: (n) => asBig(invokeMaybeCallable(entry.next, [new Integer(n)], context, evaluate)) } : {},
+      ...entry.prev ? { prev: (n) => asBig(invokeMaybeCallable(entry.prev, [new Integer(n)], context, evaluate)) } : {}
+    };
+  }
 
   // src/runtime/semantic.js
   function int5(value) {
@@ -78978,6 +79405,9 @@ ${indented.join(`,
     if (requestedType && runtimeType && requestedType.name === runtimeType.name) {
       return true;
     }
+    if (requestedType?.shape && value instanceof Integer && shapeHas(requestedType.shape, value.value)) {
+      return true;
+    }
     const ext = value?._ext;
     if (!(ext instanceof Map) || !name) {
       return false;
@@ -79112,6 +79542,9 @@ ${indented.join(`,
       checkTraits(value, context);
     }
     return value;
+  }
+  function valueHasSemanticChain(value, chain) {
+    return chain.every(({ name, exclude }) => valueHasSemanticMembership(value, name) !== exclude);
   }
 
   // src/eval/functions/comparison.js
@@ -83638,6 +84071,9 @@ ${indented.join(`,
       return ir2("UNDECIDED");
     },
     SemanticHas(node) {
+      if (node.chain && node.chain.length > 1) {
+        return ir2("SEMANTIC_HAS", lowerNode(node.expression), node.name, node.chain);
+      }
       return ir2("SEMANTIC_HAS", lowerNode(node.expression), node.name);
     },
     SemanticConvertSoft(node) {
@@ -84090,6 +84526,64 @@ ${indented.join(`,
         return lowerNode(el);
       });
       return constructorMeta ? ir2("MAP_OBJ", constructorMeta, ...loweredElements) : ir2("MAP_OBJ", ...loweredElements);
+    },
+    PiecewiseContainer(node) {
+      const rotate = (element) => {
+        if (element?.type === "BinaryOperation" && (element.operator === "||" || element.operator === "&&")) {
+          const right = rotate(element.right);
+          if (right?.type === "BinaryOperation" && right.operator === "?" && right.__rotated) {
+            const merged = { ...element, right: right.left };
+            return { ...right, left: merged, __rotated: true };
+          }
+          return element;
+        }
+        if (element?.type === "BinaryOperation" && element.operator === "?")
+          return { ...element, __rotated: true };
+        return element;
+      };
+      const splitAsk = (element) => {
+        if (element?.type === "Ask") {
+          return { region: element.target, rule: { type: "Grouping", expression: element.arg, pos: element.pos, original: element.original } };
+        }
+        if (element?.type === "BinaryOperation" && (element.operator === "||" || element.operator === "&&")) {
+          const inner = splitAsk(element.right);
+          return inner ? { region: { ...element, right: inner.region }, rule: inner.rule } : null;
+        }
+        if (element && typeof element === "object" && element.left && element.type !== "BinaryOperation" || element?.type === "BinaryOperation" && element.operator !== "?") {
+          const inner = splitAsk(element.left);
+          if (inner)
+            return { region: inner.region, rule: { ...element, left: inner.rule } };
+        }
+        return null;
+      };
+      const arms = node.elements.map((raw) => {
+        let element = rotate(raw);
+        if (!(element?.type === "BinaryOperation" && element.operator === "?")) {
+          const split = splitAsk(element);
+          if (split)
+            element = rotate({ type: "BinaryOperation", operator: "?", left: split.region, right: split.rule, pos: raw.pos, original: raw.original });
+        }
+        if (element?.type === "BinaryOperation" && element.operator === "?") {
+          return ir2("DEFER", ir2("CONDITION", lowerNode(element.left), lowerNode(element.right)));
+        }
+        if (element?.type === "SemanticHas") {
+          throw new Error("A piecewise arm reads 'region ? rule'; ':name' after '?' is a type test, so wrap the rule in parentheses");
+        }
+        return ir2("DEFER", lowerNode(element));
+      });
+      const header = node.header;
+      const meta = {
+        variables: header.variables,
+        integers: header.integers.map((entry) => ({
+          name: entry.name,
+          types: entry.types.map((type) => ({ name: type.name, exclude: type.exclude === true })),
+          ...entry.neighbor ? { neighbor: { relation: entry.neighbor.relation, of: entry.neighbor.of } } : {}
+        })),
+        name: header.name ?? null,
+        traits: header.traits ?? [],
+        source: node.sourceText ?? null
+      };
+      return ir2("PIECEWISE", meta, ...arms);
     },
     CaseContainer(node) {
       const lowerCaseElement = (element) => {
@@ -89512,6 +90006,9 @@ ${indented.join(`,
       impl(args, context, evaluate) {
         const value = evaluate(args[0]);
         const name = args[1];
+        if (Array.isArray(args[2])) {
+          return valueHasSemanticChain(value, args[2]) ? new Integer(1n) : null;
+        }
         return valueHasSemanticMembership(value, name) ? new Integer(1n) : null;
       },
       doc: "Check semantic type/trait membership against __type, _type, and __traits"
@@ -90776,8 +91273,820 @@ ${indented.join(`,
     }
   };
 
+  // src/eval/functions/piecewise.js
+  var PIECE_BUDGET = 1e4;
+  var ZERO3 = new Rational(0n, 1n);
+  var TWO = new Rational(2n, 1n);
+  function toQ(value) {
+    if (value instanceof Rational)
+      return value;
+    if (value instanceof Integer)
+      return new Rational(value.value, 1n);
+    if (typeof value === "bigint")
+      return new Rational(value, 1n);
+    return null;
+  }
+  function fromQ(q) {
+    return q.denominator === 1n ? new Integer(q.numerator) : q;
+  }
+  function floorDiv2(n, d) {
+    const q = n / d;
+    return n % d !== 0n && n < 0n !== d < 0n ? q - 1n : q;
+  }
+  var floorQ = (q) => floorDiv2(q.numerator, q.denominator);
+  var ceilQ = (q) => -floorDiv2(-q.numerator, q.denominator);
+  var cmp = (a, b) => a.compareTo(b);
+  var minB = (a, b) => a < b ? a : b;
+  var maxB = (a, b) => a > b ? a : b;
+  function seq7(values) {
+    return attachBuiltinProto({ type: "sequence", values });
+  }
+  function rixMap2(entries) {
+    return attachBuiltinProto({ type: "map", entries: new Map(entries) });
+  }
+  var unwrapDefer = (node) => node?.fn === "DEFER" ? node.args[0] : node;
+  function namesIn(node, out = new Set) {
+    if (!node || typeof node !== "object")
+      return out;
+    if (Array.isArray(node)) {
+      for (const item of node)
+        namesIn(item, out);
+      return out;
+    }
+    if (node.fn === "RETRIEVE" && typeof node.args?.[0] === "string")
+      out.add(node.args[0]);
+    if (Array.isArray(node.args))
+      for (const arg of node.args)
+        namesIn(arg, out);
+    return out;
+  }
+  function flatten(node, fn) {
+    if (node?.fn === fn)
+      return node.args.flatMap((arg) => flatten(arg, fn));
+    return [node];
+  }
+  var PRINT_OPS = { ADD: "+", SUB: "-", MUL: "*", DIV: "/", POW: "^", LT: "<", GT: ">", LTE: "<=", GTE: ">=", EQ: "==", NEQ: "!=" };
+  var PRECEDENCE2 = { ADD: 1, SUB: 1, MUL: 2, DIV: 2, NEG: 3, POW: 4 };
+  function regionText(node) {
+    const print = (n, parent = 0) => {
+      if (!n)
+        return "_";
+      switch (n.fn) {
+        case "LITERAL":
+          return String(n.args[0]);
+        case "RETRIEVE":
+          return String(n.args[0]);
+        case "NULL":
+          return "_";
+        case "NEG": {
+          const inner = print(n.args[0], PRECEDENCE2.NEG);
+          return parent > PRECEDENCE2.NEG ? `(-${inner})` : `-${inner}`;
+        }
+        case "ADD":
+        case "SUB":
+        case "MUL":
+        case "DIV":
+        case "POW": {
+          const p = PRECEDENCE2[n.fn];
+          const left = print(n.args[0], n.fn === "POW" ? p + 1 : p);
+          const right = print(n.args[1], n.fn === "POW" ? p : p + 1);
+          const text = n.fn === "MUL" && /^[0-9]/.test(left) && /^[a-z]/.test(right) ? `${left}${right}` : `${left}${PRINT_OPS[n.fn]}${right}`;
+          return parent > p ? `(${text})` : text;
+        }
+        case "LT":
+        case "GT":
+        case "LTE":
+        case "GTE":
+        case "EQ":
+        case "NEQ":
+          return `${print(n.args[0])} ${PRINT_OPS[n.fn]} ${print(n.args[1])}`;
+        case "AND":
+          return n.args.map((a) => print(a, 10)).join(" && ");
+        case "OR":
+          return n.args.map((a) => print(a, 10)).join(" || ");
+        case "INTERVAL":
+          return n.args.map((a) => print(a, 0)).join(":");
+        case "BETWEEN": {
+          const shape = n.args[0]?.args?.[0] ?? n.args[0];
+          const links = [...String(shape)].filter((c) => c === ":" || c === "!");
+          const points = n.args.slice(1);
+          let text = "";
+          points.forEach((point, k) => {
+            if (k > 0)
+              text += links[k - 1] === "!" ? ":!" : ":";
+            text += point?.fn === "NULL" ? "_" : print(point, 0);
+          });
+          return text;
+        }
+        default:
+          return irToText(n);
+      }
+    };
+    return print(node);
+  }
+  function chainInfo(node, variables) {
+    let points;
+    let strict;
+    let ends;
+    if (node?.fn === "INTERVAL" && node.args.length === 3) {
+      points = node.args;
+      strict = [false, false, false];
+      ends = [false, false, false];
+    } else if (node?.fn === "BETWEEN" && node.args.length === 4) {
+      const shape = String(node.args[0]?.args?.[0] ?? node.args[0]);
+      points = node.args.slice(1);
+      strict = [false];
+      ends = [];
+      for (const ch of shape) {
+        if (ch === "_" || ch === "v")
+          ends.push(ch === "_");
+        else
+          strict.push(ch === "!");
+      }
+    } else {
+      return null;
+    }
+    const middle = points[1];
+    if (middle?.fn !== "RETRIEVE" || !variables.includes(middle.args[0]))
+      return null;
+    return {
+      node,
+      variable: middle.args[0],
+      lo: ends[0] ? null : points[0],
+      hi: ends[2] ? null : points[2],
+      loStrict: strict[1] === true,
+      hiStrict: strict[2] === true,
+      oneSided: ends[0] || ends[2]
+    };
+  }
+  function buildSpec(meta, armNodes, context, evaluate) {
+    const variables = meta.variables;
+    const integerList = meta.integers;
+    const declared = new Map;
+    for (const name of variables) {
+      if (declared.has(name))
+        throw new Error(`Piecewise header declares ${name} twice`);
+      declared.set(name, "variable");
+    }
+    for (const entry of integerList) {
+      if (declared.has(entry.name))
+        throw new Error(`Piecewise header declares ${entry.name} twice`);
+      declared.set(entry.name, "integer");
+    }
+    const integers = new Map;
+    const resolve = (name) => resolveIntegerType(name, context, evaluate);
+    for (const entry of integerList) {
+      integers.set(entry.name, {
+        name: entry.name,
+        constraint: buildIntegerConstraint(entry.types, resolve),
+        typeText: entry.types.length ? entry.types.map((t) => `::${t.exclude ? "!" : ""}${t.name}`).join("") : "",
+        neighbor: entry.neighbor ?? null
+      });
+    }
+    for (const info of integers.values()) {
+      if (!info.neighbor)
+        continue;
+      const anchor = integers.get(info.neighbor.of);
+      if (!anchor)
+        throw new Error(`${info.name} ${info.neighbor.relation} ${info.neighbor.of}: ${info.neighbor.of} is not an integer declared in this header`);
+    }
+    const rootOf = (name, seen = new Set) => {
+      const info = integers.get(name);
+      if (!info.neighbor)
+        return name;
+      if (seen.has(name))
+        throw new Error(`Neighbor integers ${[...seen].join(", ")} refer to each other in a cycle`);
+      seen.add(name);
+      return rootOf(info.neighbor.of, seen);
+    };
+    for (const name of integers.keys())
+      integers.get(name).root = rootOf(name);
+    const neighborOrder = [];
+    const placed = new Set;
+    const place = (name) => {
+      if (placed.has(name))
+        return;
+      const info = integers.get(name);
+      if (info.neighbor)
+        place(info.neighbor.of);
+      placed.add(name);
+      if (info.neighbor)
+        neighborOrder.push(name);
+    };
+    for (const name of integers.keys())
+      place(name);
+    const intsIn = (node) => [...namesIn(node)].filter((name) => integers.has(name));
+    const rootsOf = (names) => new Set(names.map((name) => integers.get(name).root));
+    const arms = [];
+    armNodes.forEach((raw, index) => {
+      const inner = unwrapDefer(raw);
+      const isDefault = inner?.fn !== "CONDITION";
+      if (isDefault) {
+        if (index !== armNodes.length - 1)
+          throw new Error("A piecewise default (an arm without '?') must be the last arm");
+        const used = intsIn(inner);
+        if (used.length)
+          throw new Error(`The default arm uses ${used.join(", ")}, but only a region can fix an integer; give the default its own region`);
+        arms.push({ index, isDefault: true, rule: inner, ruleText: regionText(inner) });
+        return;
+      }
+      const [condition, rule] = inner.args;
+      const ruleInts = intsIn(rule);
+      const alternatives = flatten(condition, "OR").map((alt) => {
+        const conjuncts = flatten(alt, "AND").map((node) => ({ node, chain: chainInfo(node, variables) }));
+        const used = new Set([...intsIn(alt), ...ruleInts]);
+        const roots = rootsOf([...used]);
+        const pins = new Map;
+        for (const root of roots) {
+          const pin = conjuncts.find(({ chain }) => {
+            if (!chain)
+              return false;
+            const chainRoots = rootsOf([...intsIn(chain.lo), ...intsIn(chain.hi)]);
+            return chainRoots.size === 1 && chainRoots.has(root);
+          });
+          if (!pin) {
+            const where = ruleInts.some((name) => integers.get(name).root === root) && !intsIn(alt).some((name) => integers.get(name).root === root) ? `the rule uses ${root} but the region ${regionText(alt)} does not mention it` : `no chain in ${regionText(alt)} has bounds using ${root} alone, so nothing fixes it`;
+            throw new Error(`Piecewise arm ${index + 1}: ${where}`);
+          }
+          pins.set(root, pin.chain);
+        }
+        const needed = new Set;
+        for (const name of used) {
+          let current = name;
+          while (integers.get(current).neighbor) {
+            needed.add(current);
+            current = integers.get(current).neighbor.of;
+          }
+        }
+        const neighbors = neighborOrder.filter((name) => needed.has(name));
+        return { node: alt, conjuncts, roots: [...roots], pins, neighbors };
+      });
+      arms.push({ index, isDefault: false, condition, rule, alternatives, regionText: regionText(condition), ruleText: regionText(rule) });
+    });
+    return {
+      variables,
+      integers,
+      neighborOrder,
+      arms,
+      name: meta.name ?? null,
+      traits: meta.traits ?? [],
+      source: meta.source ?? null
+    };
+  }
+  function withBindings(context, bindings, run) {
+    if (!bindings || bindings.size === 0)
+      return run();
+    context.push(new Map(bindings));
+    try {
+      return run();
+    } finally {
+      context.pop();
+    }
+  }
+  function completeBindings(spec, rootValues, neededNeighbors) {
+    const values = new Map(rootValues);
+    for (const name of spec.neighborOrder) {
+      if (!neededNeighbors.includes(name))
+        continue;
+      const info = spec.integers.get(name);
+      const anchor = values.get(info.neighbor.of);
+      if (anchor === undefined)
+        continue;
+      const c = info.constraint;
+      const relation = info.neighbor.relation;
+      const found = relation === ">" ? c.next(anchor, true) : relation === ">=" ? c.next(anchor, false) : relation === "<" ? c.prev(anchor, true) : c.prev(anchor, false);
+      if (found === null)
+        return null;
+      values.set(name, found);
+    }
+    return values;
+  }
+  var asIntegerBindings = (values) => new Map([...values].map(([name, n]) => [name, new Integer(n)]));
+  function evaluateBound(node, bindings, context, evaluate) {
+    if (node === null)
+      return null;
+    const value = withBindings(context, bindings, () => evaluate(node));
+    const q = toQ(value);
+    if (!q)
+      throw new Error(`Piecewise bounds must be rational; ${regionText(node)} gave ${value?.toString?.() ?? String(value)}`);
+    return q;
+  }
+  function solveRoot(spec, alt, root, xlo, xhi, context, evaluate) {
+    const chain = alt.pins.get(root);
+    const info = spec.integers.get(root);
+    const constraint = info.constraint;
+    if (constraint.empty)
+      return [];
+    const needed = alt.neighbors;
+    const boundsAt = (k) => {
+      const values = completeBindings(spec, new Map([[root, k]]), needed);
+      if (values === null)
+        return null;
+      const bindings = asIntegerBindings(values);
+      return [evaluateBound(chain.lo, bindings, context, evaluate), evaluateBound(chain.hi, bindings, context, evaluate)];
+    };
+    const shape = constraint.shape;
+    const neighborShapes = needed.map((name) => spec.integers.get(name).constraint.shape);
+    if (shape && neighborShapes.every(Boolean)) {
+      let period = shape.mod;
+      const g = (a, b) => b ? g(b, a % b) : a;
+      for (const s of neighborShapes)
+        period = period / g(period, s.mod) * s.mod;
+      const residues = [];
+      for (let r = 0n;r < period; r++)
+        if (shape.residues.includes((r % shape.mod + shape.mod) % shape.mod))
+          residues.push(r);
+      const ranges = [];
+      let affine = true;
+      for (const r of residues) {
+        const k = (j) => period * j + r;
+        let jmin = shape.min === null ? null : -floorDiv2(-(shape.min - r), period);
+        let jmax = shape.max === null ? null : floorDiv2(shape.max - r, period);
+        const j0 = jmin ?? (jmax !== null ? jmax - 2n : 0n);
+        const samples = [j0, j0 + 1n, j0 + 2n].map((j) => boundsAt(k(j)));
+        if (samples.some((s) => s === null)) {
+          affine = false;
+          break;
+        }
+        const line = (which) => {
+          const [f0, f1, f2] = samples.map((s) => s[which]);
+          if (f0 === null)
+            return null;
+          const d1 = f1.subtract(f0);
+          if (!f2.subtract(f1).equals(d1))
+            return;
+          return { slope: d1, at: (j) => f0.add(d1.multiply(new Rational(j - j0, 1n))), base: f0.subtract(d1.multiply(new Rational(j0, 1n))) };
+        };
+        const lo = line(0);
+        const hi = line(1);
+        if (lo === undefined || hi === undefined) {
+          affine = false;
+          break;
+        }
+        const half = (lineInfo, x, side) => {
+          if (!lineInfo)
+            return [null, null];
+          const { slope, base } = lineInfo;
+          if (slope.equals(ZERO3)) {
+            const ok = side === "below" ? cmp(base, x) <= 0 : cmp(base, x) >= 0;
+            return ok ? [null, null] : "empty";
+          }
+          const t = x.subtract(base).divide(slope);
+          const positive = cmp(slope, ZERO3) > 0;
+          if (side === "below" === positive)
+            return [null, floorQ(t)];
+          return [ceilQ(t), null];
+        };
+        const clip = (parts) => {
+          let a = jmin;
+          let b = jmax;
+          for (const part of parts) {
+            if (part === "empty")
+              return null;
+            const [pa, pb] = part;
+            if (pa !== null)
+              a = a === null ? pa : maxB(a, pa);
+            if (pb !== null)
+              b = b === null ? pb : minB(b, pb);
+          }
+          if (a !== null && b !== null && a > b)
+            return null;
+          return [a, b];
+        };
+        const asc = clip([half(lo, xhi, "below"), half(hi, xlo, "above")]);
+        if (asc)
+          ranges.push({ r, k, range: asc });
+        if (!chain.oneSided && lo && hi) {
+          const desc = clip([half(hi, xhi, "below"), half(lo, xlo, "above")]);
+          if (desc)
+            ranges.push({ r, k, range: desc });
+        }
+      }
+      if (affine) {
+        const values = new Set;
+        for (const { k, range: [a, b] } of ranges) {
+          if (a === null) {
+            throw new Error(`Infinitely many values of ${root} fit the region ${regionText(chain.node)}; bound it on both sides or give ${root} a type with a lower bound, such as ${root}::Natural`);
+          }
+          const last = b === null ? a + BigInt(PIECE_BUDGET) : b;
+          if (last - a > BigInt(PIECE_BUDGET)) {
+            throw new Error(`More than ${PIECE_BUDGET} values of ${root} fit ${regionText(chain.node)} here; narrow the input`);
+          }
+          for (let j = a;j <= last; j++)
+            values.add(k(j));
+        }
+        return [...values].sort((x, y) => x < y ? -1 : x > y ? 1 : 0);
+      }
+    }
+    if (chain.lo === null) {
+      throw new Error(`Cannot solve ${regionText(chain.node)} for ${root}: its bounds are not affine in ${root}, and the search needs a lower bound`);
+    }
+    const loAt = (k) => {
+      const bounds = boundsAt(k);
+      return bounds === null ? null : bounds[0];
+    };
+    const start = constraint.prev(floorQ(xhi)) ?? constraint.next(floorQ(xhi));
+    if (start === null)
+      return [];
+    let steps = 0;
+    const tick = () => {
+      if (++steps > INTEGER_SEARCH_BUDGET)
+        throw new Error(`Could not solve ${regionText(chain.node)} for ${root} within ${INTEGER_SEARCH_BUDGET} steps`);
+    };
+    let low;
+    let high;
+    const startLo = loAt(start);
+    if (startLo !== null && cmp(startLo, xhi) <= 0) {
+      low = start;
+      let step = 1n;
+      while (true) {
+        tick();
+        const next = constraint.next(low + step);
+        if (next === null) {
+          high = null;
+          break;
+        }
+        const v = loAt(next);
+        if (v === null || cmp(v, xhi) > 0) {
+          high = next;
+          break;
+        }
+        low = next;
+        step *= 2n;
+      }
+    } else {
+      high = start;
+      let step = 1n;
+      while (true) {
+        tick();
+        const prev = constraint.prev(high - step);
+        if (prev === null)
+          return [];
+        const v = loAt(prev);
+        if (v !== null && cmp(v, xhi) <= 0) {
+          low = prev;
+          break;
+        }
+        high = prev;
+        step *= 2n;
+      }
+    }
+    while (high !== null) {
+      tick();
+      const between = constraint.next(low, true);
+      if (between === null || between >= high)
+        break;
+      let mid = constraint.prev(low + (high - low) / 2n);
+      if (mid === null || mid <= low)
+        mid = between;
+      const v = loAt(mid);
+      if (v !== null && cmp(v, xhi) <= 0)
+        low = mid;
+      else
+        high = mid;
+    }
+    const found = [];
+    let k = low;
+    while (k !== null) {
+      tick();
+      const bounds = boundsAt(k);
+      if (bounds !== null) {
+        if (bounds[1] !== null && cmp(bounds[1], xlo) < 0)
+          break;
+        found.push(k);
+      }
+      if (found.length > PIECE_BUDGET)
+        throw new Error(`More than ${PIECE_BUDGET} values of ${root} fit ${regionText(chain.node)} here; narrow the input`);
+      k = constraint.prev(k, true);
+    }
+    return found.reverse();
+  }
+  function enclosure(value) {
+    if (value instanceof RationalInterval)
+      return [value.low, value.high];
+    if (value instanceof CertifiedApproximation)
+      return [value.enclosure.low, value.enclosure.high];
+    const q = toQ(value);
+    return q ? [q, q] : null;
+  }
+  function chainState(chain, context, evaluate) {
+    const x = withBindings(context, null, () => evaluate({ fn: "RETRIEVE", args: [chain.variable] }));
+    const box = enclosure(x);
+    if (!box)
+      return decisionState(evaluate(chain.node));
+    const [a, b] = box;
+    const lo = evaluateBound(chain.lo, null, context, evaluate);
+    const hi = evaluateBound(chain.hi, null, context, evaluate);
+    const le = (p, q, strict) => p === null || q === null ? true : strict ? cmp(p, q) < 0 : cmp(p, q) <= 0;
+    const holds = (first, firstStrict, second, secondStrict) => {
+      const all = le(first, a, firstStrict) && le(b, second, secondStrict);
+      const none = first !== null && !le(first, b, firstStrict) || second !== null && !le(a, second, secondStrict);
+      return all ? "truth" : none ? "false" : "undecided";
+    };
+    const up = holds(lo, chain.loStrict, hi, chain.hiStrict);
+    if (chain.oneSided || lo === null || hi === null)
+      return up;
+    const down = holds(hi, chain.hiStrict, lo, chain.loStrict);
+    if (up === "truth" || down === "truth")
+      return "truth";
+    if (up === "false" && down === "false")
+      return "false";
+    return "undecided";
+  }
+  function alternativeState(alt, context, evaluate) {
+    let state = "truth";
+    for (const { node, chain } of alt.conjuncts) {
+      const s = chain ? chainState(chain, context, evaluate) : decisionState(evaluate(node));
+      if (s === "false" || s === "null")
+        return "false";
+      if (s === "undecided")
+        state = "undecided";
+    }
+    return state;
+  }
+  function* combinations(lists, index = 0, prefix = []) {
+    if (index === lists.length) {
+      yield prefix;
+      return;
+    }
+    for (const item of lists[index])
+      yield* combinations(lists, index + 1, [...prefix, item]);
+  }
+  function locate(spec, context, evaluate) {
+    for (const arm of spec.arms) {
+      if (arm.isDefault)
+        return { arm, bindings: new Map };
+      for (const alt of arm.alternatives) {
+        if (alt.roots.length === 0) {
+          const state = alternativeState(alt, context, evaluate);
+          if (state === "truth")
+            return { arm, bindings: new Map };
+          if (state === "undecided")
+            return { undecided: true };
+          continue;
+        }
+        const lists = alt.roots.map((root) => {
+          const chain = alt.pins.get(root);
+          const x = evaluate({ fn: "RETRIEVE", args: [chain.variable] });
+          const box = enclosure(x);
+          if (!box)
+            throw new Error(`Piecewise needs a rational, interval, or certified value for ${chain.variable}`);
+          return solveRoot(spec, alt, root, box[0], box[1], context, evaluate);
+        });
+        let undecided = false;
+        let count = 0;
+        for (const combo of combinations(lists)) {
+          if (++count > PIECE_BUDGET)
+            throw new Error(`More than ${PIECE_BUDGET} integer combinations to try in ${arm.regionText}`);
+          const values = completeBindings(spec, new Map(alt.roots.map((root, i) => [root, combo[i]])), alt.neighbors);
+          if (values === null)
+            continue;
+          const bindings = asIntegerBindings(values);
+          const state = withBindings(context, bindings, () => alternativeState(alt, context, evaluate));
+          if (state === "truth")
+            return { arm, bindings };
+          if (state === "undecided")
+            undecided = true;
+        }
+        if (undecided)
+          return { undecided: true };
+      }
+    }
+    return null;
+  }
+  function evaluatePoint(spec, context, evaluate) {
+    const found = locate(spec, context, evaluate);
+    if (found === null)
+      return null;
+    if (found.undecided)
+      return UNDECIDED;
+    return withBindings(context, found.bindings, () => evaluate(found.arm.rule));
+  }
+  function breakpoints(spec, variable, a, b, context, evaluate) {
+    const points = new Map;
+    const add = (q) => {
+      if (q === null)
+        return;
+      if (cmp(q, a) < 0 || cmp(q, b) > 0)
+        return;
+      points.set(q.toString(), q);
+      if (points.size > PIECE_BUDGET)
+        throw new Error(`More than ${PIECE_BUDGET} breakpoints in ${a}:${b}; narrow the interval`);
+    };
+    for (const arm of spec.arms) {
+      if (arm.isDefault)
+        continue;
+      for (const alt of arm.alternatives) {
+        for (const { node, chain } of alt.conjuncts) {
+          if (!chain) {
+            if (namesIn(node).has(variable)) {
+              throw new Error(`Interval input needs region arms; ${regionText(node)} tests ${variable} directly`);
+            }
+            continue;
+          }
+          if (chain.variable !== variable)
+            continue;
+          const chainRoots = alt.roots.filter((root) => alt.pins.get(root) === chain);
+          const others = alt.roots.filter((root) => alt.pins.get(root) !== chain);
+          if (others.length) {
+            throw new Error(`Interval input on ${variable} is not supported when ${regionText(chain.node)} shares integers with other chains`);
+          }
+          if (chainRoots.length === 0) {
+            add(evaluateBound(chain.lo, null, context, evaluate));
+            add(evaluateBound(chain.hi, null, context, evaluate));
+            continue;
+          }
+          const root = chainRoots[0];
+          for (const k of solveRoot(spec, alt, root, a, b, context, evaluate)) {
+            const values = completeBindings(spec, new Map([[root, k]]), alt.neighbors);
+            if (values === null)
+              continue;
+            const bindings = asIntegerBindings(values);
+            add(evaluateBound(chain.lo, bindings, context, evaluate));
+            add(evaluateBound(chain.hi, bindings, context, evaluate));
+          }
+        }
+      }
+    }
+    return [...points.values()].sort(cmp);
+  }
+  function hullOf(values) {
+    let low = null;
+    let high = null;
+    for (const value of values) {
+      const box = value instanceof RationalInterval ? [value.low, value.high] : toQ(value) ? [toQ(value), toQ(value)] : null;
+      if (!box)
+        throw new Error(`Interval input needs numeric rules; a piece gave ${value?.toString?.() ?? String(value)}`);
+      if (low === null || cmp(box[0], low) < 0)
+        low = box[0];
+      if (high === null || cmp(box[1], high) > 0)
+        high = box[1];
+    }
+    if (low.equals(high))
+      return fromQ(low);
+    return new RationalInterval(low, high);
+  }
+  function evaluateInterval(spec, variable, interval, context, evaluate) {
+    const a = interval.low;
+    const b = interval.high;
+    if (a.equals(b))
+      return withBindings(context, new Map([[variable, fromQ(a)]]), () => evaluatePoint(spec, context, evaluate));
+    const cuts = breakpoints(spec, variable, a, b, context, evaluate).filter((q) => cmp(q, a) > 0 && cmp(q, b) < 0);
+    const nodes = [a, ...cuts, b];
+    const results = [];
+    for (const point of nodes) {
+      const value = withBindings(context, new Map([[variable, fromQ(point)]]), () => evaluatePoint(spec, context, evaluate));
+      if (value === null || isUndecided(value))
+        return value;
+      results.push(value);
+    }
+    for (let i = 0;i + 1 < nodes.length; i++) {
+      const left = nodes[i];
+      const right = nodes[i + 1];
+      const mid = left.add(right).divide(TWO);
+      const found = withBindings(context, new Map([[variable, mid]]), () => locate(spec, context, evaluate));
+      if (found === null)
+        return null;
+      if (found.undecided)
+        return UNDECIDED;
+      const piece = new RationalInterval(left, right);
+      const bindings = new Map([...found.bindings, [variable, piece]]);
+      const value = withBindings(context, bindings, () => evaluate(found.arm.rule));
+      if (value === null || isUndecided(value))
+        return value;
+      results.push(value);
+    }
+    return hullOf(results);
+  }
+  function evaluateCall(spec, context, evaluate) {
+    const intervalVars = [];
+    for (const name of spec.variables) {
+      const value = evaluate({ fn: "RETRIEVE", args: [name] });
+      if (value instanceof RationalInterval && !value.low.equals(value.high))
+        intervalVars.push([name, value]);
+    }
+    if (intervalVars.length > 1) {
+      throw new Error("Interval input on more than one piecewise variable is not supported yet");
+    }
+    if (intervalVars.length === 1) {
+      return evaluateInterval(spec, intervalVars[0][0], intervalVars[0][1], context, evaluate);
+    }
+    return evaluatePoint(spec, context, evaluate);
+  }
+  function isPiecewise(value) {
+    return Boolean(value?.__piecewise);
+  }
+  function piecewiseOf(value, who) {
+    if (!isPiecewise(value))
+      throw new Error(`${who} expects a piecewise function made with {?: ... }`);
+    return value.__piecewise;
+  }
+  function asInterval(value, who) {
+    if (value instanceof RationalInterval)
+      return value;
+    const q = toQ(value);
+    if (q)
+      return new RationalInterval(q, q);
+    throw new Error(`${who} expects an interval such as 0:10`);
+  }
+  var piecewiseFunctions = {
+    PIECEWISE: {
+      lazy: true,
+      impl(args, context, evaluate) {
+        const meta = args[0];
+        const spec = buildSpec(meta, args.slice(1), context, evaluate);
+        const value = {
+          type: "lambda",
+          params: {
+            positional: spec.variables.map((name) => ({ name, holeDefault: null })),
+            keyword: [],
+            conditionals: [],
+            prep: [],
+            prepStrict: false,
+            prepUndecided: "stop",
+            metadata: {}
+          },
+          body: { fn: "PIECEWISE_EVAL", args: [spec] },
+          __closureScopes: context.captureClosureScopes(),
+          ...spec.name ? { __name: spec.name } : {}
+        };
+        Object.defineProperty(value, "__piecewise", { value: spec, enumerable: false, configurable: true });
+        return value;
+      },
+      doc: "Build a piecewise function from {?: /variables; integers/ region ? rule; ...; default }"
+    },
+    PIECEWISE_EVAL: {
+      lazy: true,
+      impl(args, context, evaluate) {
+        return evaluateCall(args[0], context, evaluate);
+      },
+      doc: "Evaluate a piecewise function body at the bound variables"
+    },
+    PIECES: {
+      impl(args) {
+        const spec = piecewiseOf(args[0], ".Pieces");
+        return seq7(spec.arms.map((arm) => {
+          const usedInts = arm.isDefault ? [] : [...new Set(arm.alternatives.flatMap((alt) => [...alt.roots, ...alt.neighbors]))];
+          return rixMap2([
+            ["region", arm.isDefault ? null : stringObj2(arm.regionText)],
+            ["integers", seq7(usedInts.map((name) => {
+              const info = spec.integers.get(name);
+              const neighbor = info.neighbor ? ` ${info.neighbor.relation} ${info.neighbor.of}` : "";
+              return stringObj2(`${name}${info.typeText}${neighbor}`);
+            }))],
+            ["rule", stringObj2(arm.ruleText)],
+            ["default", arm.isDefault ? new Integer(1n) : null]
+          ]);
+        }));
+      },
+      doc: "List a piecewise function's arms as maps with region, integers, rule, and default"
+    },
+    BREAKS: {
+      lazy: true,
+      impl(args, context, evaluate) {
+        const fnValue = evaluate(args[0]);
+        const spec = piecewiseOf(fnValue, ".Breaks");
+        const range = asInterval(evaluate(args[1]), ".Breaks");
+        const variable = args.length > 2 ? String(evaluate(args[2])?.value ?? spec.variables[0]) : spec.variables[0];
+        if (!spec.variables.includes(variable))
+          throw new Error(`.Breaks: ${variable} is not a variable of this piecewise function`);
+        if (spec.variables.length > 1)
+          throw new Error(".Breaks supports one-variable piecewise functions for now");
+        const closures = Array.isArray(fnValue.__closureScopes) ? fnValue.__closureScopes : [];
+        let pushed = 0;
+        try {
+          for (const closure of closures) {
+            context.push(closure instanceof Map ? closure : closure.bindings, {
+              scopedEnv: closure.scopedEnv,
+              isolated: closure.isolated === true,
+              readThrough: closure.readThrough === true,
+              callableBoundary: closure.callableBoundary === true
+            });
+            pushed++;
+          }
+          context.push(new Map([[variable, fromQ(range.low)]]));
+          pushed++;
+          return seq7(breakpoints(spec, variable, range.low, range.high, context, evaluate).map(fromQ));
+        } finally {
+          for (let i = 0;i < pushed; i++)
+            context.pop();
+        }
+      },
+      doc: "Sorted region endpoints of a one-variable piecewise function inside an interval"
+    },
+    INTEGER_TYPE: {
+      impl(args, context) {
+        if (args.length < 2)
+          throw new Error(".IntegerType(:Name, {= mod=..., residues=[...], min=..., max=... })");
+        registerIntegerTypeFromRix(args[0], args[1], context);
+        return args[0];
+      },
+      doc: "Register an integer subtype from a shape {= mod, residues, min, max }"
+    }
+  };
+
   // src/eval/functions/control.js
-  function unwrapDefer(node) {
+  function unwrapDefer2(node) {
     if (node && node.fn === "DEFER" && node.args && node.args.length > 0) {
       return node.args[0];
     }
@@ -90873,12 +92182,12 @@ ${detail}`;
       lazy: true,
       impl(args, context, evaluate) {
         const target = requireReturnTarget(context);
-        const value = evaluate(unwrapDefer(args[1]));
+        const value = evaluate(unwrapDefer2(args[1]));
         if (decisionState(value) !== args[0].decision)
           return value;
         let result;
         try {
-          result = evaluate(unwrapDefer(args[2]));
+          result = evaluate(unwrapDefer2(args[2]));
         } catch (error) {
           throw markReturnPayloadError(error);
         }
@@ -90933,7 +92242,7 @@ ${detail}`;
         const { containerName, bodyArgs } = splitScopedBlockArgs(args);
         try {
           for (let i = 0;i < bodyArgs.length; i++) {
-            const inner = unwrapDefer(bodyArgs[i]);
+            const inner = unwrapDefer2(bodyArgs[i]);
             if (inner && inner.fn === "CONDITION") {
               const condResult = evaluate(inner.args[0]);
               const state = decisionState(condResult);
@@ -90970,7 +92279,7 @@ ${detail}`;
         if (bodyArgs.length > 5) {
           throw new Error(`LOOP expected at most 5 arguments, got ${bodyArgs.length}`);
         }
-        const [rawInitNode, rawCondNode, rawBodyNode, rawUpdateNode, rawAfterNode] = bodyArgs.map(unwrapDefer);
+        const [rawInitNode, rawCondNode, rawBodyNode, rawUpdateNode, rawAfterNode] = bodyArgs.map(unwrapDefer2);
         const initNode = isHoleNode(rawInitNode) ? null : rawInitNode;
         const condNode = isHoleNode(rawCondNode) ? null : rawCondNode;
         const bodyNode = isHoleNode(rawBodyNode) ? null : rawBodyNode;
@@ -91045,7 +92354,7 @@ ${detail}`;
         const branch = state === "truth" ? args[1] : state === "null" ? args[2] : args[3];
         const marker = state === "truth" ? "?:" : state === "null" ? "?_" : "??";
         try {
-          return evaluate(unwrapDefer(branch));
+          return evaluate(unwrapDefer2(branch));
         } catch (error) {
           throw addEvaluationContext(error, `while evaluating '${marker}' branch`);
         }
@@ -91245,7 +92554,7 @@ ${detail}`;
       }
     }));
   }
-  function floorDiv2(a, b) {
+  function floorDiv3(a, b) {
     let q = a / b;
     const r = a % b;
     if (r !== 0n && r > 0n !== b > 0n)
@@ -91253,14 +92562,14 @@ ${detail}`;
     return q;
   }
   function ceilDiv2(a, b) {
-    return -floorDiv2(-a, b);
+    return -floorDiv3(-a, b);
   }
   function randomGridRational(lo, hi, denominator, context) {
     const d = BigInt(denominator);
     if (d <= 0n)
       throw new Error("Random denominator must be positive");
     const min = ceilDiv2(lo.numerator * d, lo.denominator);
-    const max = floorDiv2(hi.numerator * d, hi.denominator);
+    const max = floorDiv3(hi.numerator * d, hi.denominator);
     if (min > max)
       throw new Error("The requested denominator has no points inside the interval");
     const width = max - min + 1n;
@@ -91973,7 +93282,7 @@ ${pad}}`;
     throw new Error(`${name} requires Integer arguments`);
   }
   var abs2 = (n) => n < 0n ? -n : n;
-  function gcd3(a, b) {
+  function gcd4(a, b) {
     a = abs2(a);
     b = abs2(b);
     while (b !== 0n)
@@ -92048,7 +93357,7 @@ ${pad}}`;
       impl(args) {
         if (args.length === 0)
           throw new Error("Gcd requires at least one Integer");
-        return new Integer(args.reduce((acc, value) => gcd3(acc, integerArgument(value, "Gcd")), 0n));
+        return new Integer(args.reduce((acc, value) => gcd4(acc, integerArgument(value, "Gcd")), 0n));
       },
       pure: true,
       doc: "Greatest common divisor of one or more Integers (nonnegative)"
@@ -92059,7 +93368,7 @@ ${pad}}`;
           throw new Error("Lcm requires at least one Integer");
         return new Integer(args.reduce((acc, value) => {
           const n = abs2(integerArgument(value, "Lcm"));
-          return acc === 0n || n === 0n ? 0n : acc / gcd3(acc, n) * n;
+          return acc === 0n || n === 0n ? 0n : acc / gcd4(acc, n) * n;
         }, 1n));
       },
       pure: true,
@@ -96255,7 +97564,7 @@ ${pad}}`;
   var FLOAT_TENSOR_LIMITS = Object.freeze({ cells: 262144, rank: 16, work: 4194304 });
   var buffers = new WeakMap;
   var str5 = (value) => ({ type: "string", value });
-  var seq7 = (values) => ({ type: "sequence", values });
+  var seq8 = (values) => ({ type: "sequence", values });
   var int8 = (value) => new Integer(BigInt(value));
   var values3 = (value) => Array.isArray(value) ? value : value?.values ?? value?.elements;
   function shapeOf(value) {
@@ -96278,8 +97587,8 @@ ${pad}}`;
       ["status", str5("approximate")],
       ["certified", null],
       ["format", str5(format)],
-      ["shape", seq7(shape.map(int8))],
-      ["diagnostics", seq7([...new Set(diagnostics)].map(str5))]
+      ["shape", seq8(shape.map(int8))],
+      ["diagnostics", seq8([...new Set(diagnostics)].map(str5))]
     ]), _ext: new Map([["immutable", int8(1)]]) };
     for (const [key, value] of tensor.entries)
       tensor._ext.set(key, value);
@@ -96752,14 +98061,14 @@ ${pad}}`;
     }
     return Number(value.value);
   }
-  function floorDiv3(numerator, denominator) {
+  function floorDiv4(numerator, denominator) {
     return numerator >= 0n ? numerator / denominator : -((-numerator + denominator - 1n) / denominator);
   }
   function decimalRounded(value, places, mode) {
     const exact = exactFloatRational(value);
     const scale = 10n ** BigInt(places);
     const scaled = exact.numerator * scale;
-    const lower = floorDiv3(scaled, exact.denominator);
+    const lower = floorDiv4(scaled, exact.denominator);
     let coefficient = lower;
     if (mode === "ceiling" && scaled !== lower * exact.denominator)
       coefficient += 1n;
@@ -97116,7 +98425,7 @@ ${pad}}`;
   // plugins/ratfun/rational-function.js
   var RATIONAL_FUNCTION_SCHEMA = "rix.rational-function@1";
   var str6 = (value) => ({ type: "string", value: String(value) });
-  var seq8 = (values) => ({ type: "sequence", values });
+  var seq9 = (values) => ({ type: "sequence", values });
   var zero3 = () => new Rational(0n, 1n);
   var one2 = () => new Rational(1n, 1n);
   function isExactScalar2(value) {
@@ -97165,7 +98474,7 @@ ${pad}}`;
     const tail = working.slice(difference + 1);
     return { quotient: normalize3(quotient), remainder: normalize3(tail.length ? tail : [zero3()]) };
   }
-  function gcd4(left, right) {
+  function gcd5(left, right) {
     let a = normalize3(left);
     let b = normalize3(right);
     while (!(b.length === 1 && isZero4(b[0]))) {
@@ -97189,7 +98498,7 @@ ${pad}}`;
       throw new Error("Rational-function denominator cannot be the zero polynomial");
     if (n.length === 1 && isZero4(n[0]))
       return { numerator: [zero3()], denominator: [one2()], cancelledDegree: d.length - 1 };
-    const common = gcd4(n, d);
+    const common = gcd5(n, d);
     n = exactQuotient(n, common);
     d = exactQuotient(d, common);
     const leading = d[0];
@@ -97200,7 +98509,7 @@ ${pad}}`;
     };
   }
   function polynomialValue(coefficients, variable, context, evaluate) {
-    return createPolynomial([seq8(normalize3(coefficients)), str6(variable)], context, evaluate);
+    return createPolynomial([seq9(normalize3(coefficients)), str6(variable)], context, evaluate);
   }
   function extensionValue2(value, name) {
     const requested = String(name).toLowerCase();
@@ -97349,8 +98658,8 @@ ${pad}}`;
   var FRACTION_FUNCTION_HOLE_EVIDENCE_SCHEMA = "rix.fraction-function.removable-hole-evidence@1";
   var int13 = (value) => new Integer(BigInt(value));
   var str7 = (value) => ({ type: "string", value: String(value) });
-  var seq9 = (values) => ({ type: "sequence", values });
-  var rixMap2 = (entries) => ({ type: "map", entries: new Map(entries) });
+  var seq10 = (values) => ({ type: "sequence", values });
+  var rixMap3 = (entries) => ({ type: "map", entries: new Map(entries) });
   function immutableMap(entries, methods = []) {
     return {
       type: "map",
@@ -97771,10 +99080,10 @@ ${pad}}`;
     return restrictionSpecs(value).map((spec) => symbolicSpecToCalculusExpression(spec));
   }
   function domainRecord3(value) {
-    return rixMap2([
+    return rixMap3([
       ["policy", str7("original denominators != 0")],
-      ["restrictions", seq9(restrictionSpecs(value))],
-      ["calculusRestrictions", seq9(restrictionCalculusExpressions(value))],
+      ["restrictions", seq10(restrictionSpecs(value))],
+      ["calculusRestrictions", seq10(restrictionCalculusExpressions(value))],
       ["cancelledRestrictionsPreserved", int13(1)]
     ]);
   }
@@ -97823,7 +99132,7 @@ ${pad}}`;
         ["valueKind", str7("polynomialSquareFreeDecomposition")],
         ["status", str7("identicallyZero")],
         ["polynomial", polynomial],
-        ["factors", seq9([])],
+        ["factors", seq10([])],
         ["verified", int13(1)]
       ]) : invokeReceiver(polynomial, "SquareFreeDecomposition", [], context, evaluate);
       const numeratorPresentation = squareFreePart(numerator);
@@ -97849,15 +99158,15 @@ ${pad}}`;
   function presentationGrid(source, kind, payload, context, evaluate) {
     const exact = requireFractionFunction(source);
     return createGrid([
-      seq9([str7("Transformation"), str7("Source form"), str7("Canonical projection"), str7("Verified presentation"), str7("Authoritative domain")]),
-      seq9([seq9([
+      seq10([str7("Transformation"), str7("Source form"), str7("Canonical projection"), str7("Verified presentation"), str7("Authoritative domain")]),
+      seq10([seq10([
         str7(presentationLabel(kind)),
         metadata2(exact).displaySpec,
         canonical3(exact, context, evaluate),
         payload,
         domainRecord3(exact)
       ])]),
-      seq9([])
+      seq10([])
     ]);
   }
   function presentationValue(value, kind, context, evaluate) {
@@ -97877,8 +99186,8 @@ ${pad}}`;
       ["canonical", exact],
       ["presentation", payload],
       ["domain", domainRecord3(source)],
-      ["restrictions", seq9(restrictionSpecs(source))],
-      ["calculusRestrictions", seq9(restrictionCalculusExpressions(source))]
+      ["restrictions", seq10(restrictionSpecs(source))],
+      ["calculusRestrictions", seq10(restrictionCalculusExpressions(source))]
     ], [
       ["SOURCE", method7("Source", () => source)],
       ["FUNCTION", method7("Function", () => source)],
@@ -97934,11 +99243,11 @@ ${pad}}`;
       ["cancelledFactor", cancelled],
       ["cancelledFactorEvidence", cancelledEvidence],
       ["canonicalPoleEvidence", polePart],
-      ["holes", seq9(holes)],
-      ["restrictionEvidence", seq9(restrictions)],
+      ["holes", seq10(holes)],
+      ["restrictionEvidence", seq10(restrictions)],
       ["domain", domainRecord3(source)]
     ], [
-      ["HOLES", method7("Holes", () => seq9(holes))],
+      ["HOLES", method7("Holes", () => seq10(holes))],
       ["SOURCE", method7("Source", () => source)],
       ["DOMAIN", method7("Domain", () => domainRecord3(source))],
       ["RECORD", method7("Record", () => result)]
@@ -97976,7 +99285,7 @@ ${pad}}`;
     const source = requireFractionFunction(value);
     const exact = canonical3(source, context, evaluate);
     const kinds = ["factored", "squareFree", "partialFractions"];
-    const rows = kinds.map((kind) => seq9([
+    const rows = kinds.map((kind) => seq10([
       str7(presentationLabel(kind)),
       metadata2(source).displaySpec,
       exact,
@@ -97984,9 +99293,9 @@ ${pad}}`;
       domainRecord3(source)
     ]));
     return createGrid([
-      seq9([str7("Transformation"), str7("Source form"), str7("Canonical projection"), str7("Verified presentation"), str7("Authoritative domain")]),
-      seq9(rows),
-      seq9([])
+      seq10([str7("Transformation"), str7("Source form"), str7("Canonical projection"), str7("Verified presentation"), str7("Authoritative domain")]),
+      seq10(rows),
+      seq10([])
     ]);
   }
   function method7(name, impl) {
@@ -98033,7 +99342,7 @@ ${pad}}`;
     register("FractionFunction", "EvaluationSpec", ([value]) => metadata2(requireFractionFunction(value)).evaluationSpec);
     register("FractionFunction", "CalculusExpression", ([value]) => symbolicSpecToCalculusExpression(metadata2(requireFractionFunction(value)).displaySpec));
     register("FractionFunction", "EvaluationCalculusExpression", ([value]) => symbolicSpecToCalculusExpression(metadata2(requireFractionFunction(value)).evaluationSpec));
-    register("FractionFunction", "RestrictionExpressions", ([value]) => seq9(restrictionCalculusExpressions(value)));
+    register("FractionFunction", "RestrictionExpressions", ([value]) => seq10(restrictionCalculusExpressions(value)));
     register("FractionFunction", "Variable", ([value]) => str7(requireFractionFunction(value).variable));
     register("FractionFunction", "Evaluate", ([value, argument], context, evaluate) => callWithConcreteArgs(value, [argument], context, evaluate));
     register("FractionFunction", "Compose", ([value, argument], context, evaluate) => callWithConcreteArgs(value, [argument], context, evaluate));
@@ -98082,13 +99391,13 @@ ${pad}}`;
     register("FractionFunction", "Record", ([value]) => {
       const source = requireFractionFunction(value);
       const info = metadata2(source);
-      return rixMap2([
+      return rixMap3([
         ["schema", str7(FRACTION_FUNCTION_SCHEMA)],
         ["variable", str7(source.variable)],
         ["form", info.displaySpec],
         ["evaluation", info.evaluationSpec],
-        ["restrictions", seq9(restrictionSpecs(source))],
-        ["calculusRestrictions", seq9(restrictionCalculusExpressions(source))],
+        ["restrictions", seq10(restrictionSpecs(source))],
+        ["calculusRestrictions", seq10(restrictionCalculusExpressions(source))],
         ["canonicalAvailable", info.canonicalRationalFunction ? int13(1) : null],
         ["polynomialAvailable", info.canonicalPolynomial ? int13(1) : null],
         ["canonicalError", info.canonicalError ? str7(info.canonicalError) : null]
@@ -104937,6 +106246,7 @@ Evidence: ${JSON.stringify(frame.snapshot)}
     registry.registerAll(comparisonFunctions);
     registry.registerAll(logicFunctions);
     registry.registerAll(controlFunctions);
+    registry.registerAll(piecewiseFunctions);
     registry.registerAll(collectionFunctions);
     registry.registerAll(functionFunctions);
     registry.registerAll(methodFunctions);
@@ -105259,6 +106569,9 @@ Evidence: ${JSON.stringify(frame.snapshot)}
     ctx.register("RefinementUnsupported", { ...coreFunctions.REFINEMENT_UNSUPPORTED, groups: ["Core", "Numerics"] });
     ctx.register("TraitRegister", coreFunctions.TRAIT_REGISTER);
     ctx.register("TypeRegister", coreFunctions.TYPE_REGISTER);
+    ctx.register("IntegerType", { ...piecewiseFunctions.INTEGER_TYPE, groups: ["Core"] });
+    ctx.register("Pieces", { ...piecewiseFunctions.PIECES, groups: ["Core"] });
+    ctx.register("Breaks", { ...piecewiseFunctions.BREAKS, groups: ["Core"] });
     ctx.register("TypeKnown", { ...coreFunctions.TYPE_KNOWN, groups: ["Core"] });
     ctx.register("ImmutableValue", { ...coreFunctions.IMMUTABLE_VALUE, groups: ["Core"] });
     ctx.register("TypeInstall", coreFunctions.TYPE_INSTALL);
@@ -108197,7 +109510,7 @@ Evidence: ${JSON.stringify(frame.snapshot)}
     const { containerName, bodyArgs } = splitScopedBlockArgs(args);
     try {
       for (const branch of bodyArgs) {
-        const inner = unwrapDefer(branch);
+        const inner = unwrapDefer2(branch);
         if (inner?.fn === "CONDITION") {
           const condition = await evaluateAsyncInternal(inner.args[0], context, registry, systemContext, state);
           if (isTruthyAsync(condition)) {
@@ -108230,7 +109543,7 @@ Evidence: ${JSON.stringify(frame.snapshot)}
     } = splitScopedBlockArgs(args);
     if (bodyArgs.length > 5)
       throw new Error(`LOOP expected at most 5 arguments, got ${bodyArgs.length}`);
-    const [rawInit, rawCondition, rawBody, rawUpdate, rawAfter] = bodyArgs.map(unwrapDefer);
+    const [rawInit, rawCondition, rawBody, rawUpdate, rawAfter] = bodyArgs.map(unwrapDefer2);
     const usable = (node) => node?.fn === "HOLE" ? null : node;
     const [initNode, conditionNode, bodyNode, updateNode, afterNode] = [
       rawInit,
@@ -115226,9 +116539,9 @@ $${outputName};`;
     "##!>"
   ]);
   var TIGHT_OPERATORS = new Set(["/", "//", "%", "^", "**", "..", ".", ":", "@", "'", "~"]);
-  var OPENERS = new Set(["(", "[", "{", "{=", "{?", "{;", "{|", "{:", "{@", "{!", "{#", "{$", "{$$"]);
+  var OPENERS = new Set(["(", "[", "{", "{=", "{?", "{?:", "{;", "{|", "{:", "{@", "{!", "{#", "{$", "{$$"]);
   var CLOSERS = new Set([")", "]", "}"]);
-  var EXPANDABLE_OPENERS = new Set(["{=", "{?", "{;", "{|", "{:", "{@", "{!", "{"]);
+  var EXPANDABLE_OPENERS = new Set(["{=", "{?", "{?:", "{;", "{|", "{:", "{@", "{!", "{"]);
   var OPERAND_TYPES = new Set(["Number", "ActiveBaseNumber", "Identifier", "OuterIdentifier", "PlaceHolder"]);
   var POSTFIX_CHECKS = new Set(["##@", "##:", "##!", "##_", "##!>"]);
   var PREFIX_SIGILS = new Set(["@", "@@", "@@@", "$", "$$", "::", ":::"]);
@@ -115277,6 +116590,7 @@ $${outputName};`;
   var BRACE_HELP = Object.freeze({
     "{=": "Map container",
     "{?": "Case/conditional container",
+    "{?:": "Piecewise function: {?: /x; n/ region ? rule; ...; default }",
     "{;": "Lexical code block and capture boundary",
     "{|": "Set container",
     "{:": "Tuple or shaped container",

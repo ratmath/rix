@@ -48,7 +48,7 @@ ExpressionList { Expression ("," Expression)* }
 Array { "[" ContainerContents? "]" }
 
 Container {
-  ShapedContainer | MapContainer | CaseContainer | BlockContainer | SetContainer | TupleContainer |
+  ShapedContainer | MapContainer | PiecewiseContainer | CaseContainer | BlockContainer | SetContainer | TupleContainer |
   LoopContainer | MatchContainer | RangeContainer | GreaterContainer | PowerContainer |
   DollarContainer | MutationContainer | PlusContainer | StarContainer | AndContainer |
   OrContainer | BackslashContainer | SlashContainer | IncrementContainer |
@@ -59,6 +59,7 @@ ContainerContents { Expression (Separator Expression)* }
 
 MapContainer { "{=" ContainerContents? BraceClose }
 CaseContainer { "{?" ContainerContents? BraceClose }
+PiecewiseContainer { "{?:" ContainerContents? BraceClose }
 BlockContainer { "{;" ContainerContents? BraceClose }
 SetContainer { "{|" ContainerContents? BraceClose }
 TupleContainer { "{:" ContainerContents? BraceClose }

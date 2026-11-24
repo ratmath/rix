@@ -22,6 +22,7 @@ export const documentationNavigation = [
       page("eval/rixcel-tensors.md", "Tensor spills and rectangular edits"),
       page("eval/rixcel-regions.md", "Plots, drawings, and regional exports"),
       page("eval/function-returns.md", "Diagnostic guards and early returns"),
+      page("eval/piecewise.md", "Piecewise functions"),
       page("eval/course-calculus.md", "Course calculus and checked integration"),
     ],
   },

@@ -56,6 +56,7 @@ import { coreFunctions, destructureResolvedValue, PREP_TRIAL_NO_MATCH } from "./
 import { arithmeticFunctions } from "./functions/arithmetic.js";
 import { comparisonFunctions } from "./functions/comparison.js";
 import { logicFunctions } from "./functions/logic.js";
+import { piecewiseFunctions } from "./functions/piecewise.js";
 import { addEvaluationContext, controlFunctions, matchesBreakTarget, splitScopedBlockArgs, unwrapDefer } from "./functions/control.js";
 import { collectionFunctions, createAsyncGeneratorValue } from "./functions/collections.js";
 import { functionFunctions } from "./functions/functions.js";
@@ -296,6 +297,7 @@ export function createDefaultRegistry(options = {}) {
     registry.registerAll(comparisonFunctions);
     registry.registerAll(logicFunctions);
     registry.registerAll(controlFunctions);
+    registry.registerAll(piecewiseFunctions);
     registry.registerAll(collectionFunctions);
     registry.registerAll(functionFunctions);
     registry.registerAll(methodFunctions);
@@ -583,6 +585,9 @@ export function createDefaultSystemContext(options = {}) {
     ctx.register("RefinementUnsupported", { ...coreFunctions.REFINEMENT_UNSUPPORTED, groups: ["Core", "Numerics"] });
     ctx.register("TraitRegister", coreFunctions.TRAIT_REGISTER);
     ctx.register("TypeRegister", coreFunctions.TYPE_REGISTER);
+    ctx.register("IntegerType", { ...piecewiseFunctions.INTEGER_TYPE, groups: ["Core"] });
+    ctx.register("Pieces", { ...piecewiseFunctions.PIECES, groups: ["Core"] });
+    ctx.register("Breaks", { ...piecewiseFunctions.BREAKS, groups: ["Core"] });
     ctx.register("TypeKnown", { ...coreFunctions.TYPE_KNOWN, groups: ["Core"] });
     ctx.register("ImmutableValue", { ...coreFunctions.IMMUTABLE_VALUE, groups: ["Core"] });
     ctx.register("TypeInstall", coreFunctions.TYPE_INSTALL);
