@@ -1303,6 +1303,22 @@ function tryMatchBrace(input, position) {
       }
     }
 
+    // Piecewise literal: {?: /x; n/ region ? rule; ... }
+    if (sigil === "?" && after === ":") {
+      const afterColon = input[position + 3];
+      if (!isWhitespace(afterColon) && afterColon !== "/") {
+        const { line, col } = posToLineCol(input, position);
+        throw new Error(`Piecewise opener '{?:' must be followed by a space and a /variables; integers/ header at line ${line}:${col}`);
+      }
+      return {
+        type: "Symbol",
+        original: "{?:",
+        value: "{?:",
+        containerName: null,
+        pos: [position, position, position + 3],
+      };
+    }
+
     // 2a. Space immediately → anonymous container
     if (isWhitespace(after) || after === "/") {
       return {

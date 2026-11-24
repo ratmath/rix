@@ -2,6 +2,53 @@
 
 This document is a growing design-rationale log for RiX. It records why particular language choices were made so future extensions can follow the same model instead of re-deciding the same questions ad hoc.
 
+## Piecewise Literals (2026-11-24)
+
+`{?: /x; n/ region ? rule; ...; default }` builds a piecewise function. The
+choices, made with James in the design thread of 2026-11-23 and 2026-11-24:
+
+- **A `?` sigil with a header, not a new sigil.** `{%` stays free for later
+  use. The literal sits beside `{? }` because it shares its arms, first-match
+  rule and default, but it builds a function instead of running at once; the
+  extra colon (echoing the `?:` conditional) makes that visible. `{?:` was a
+  tokenizer error before, so no program changed meaning.
+- **The binders live in the `/.../` header zone** that `{=`, `{:`, `{|`, `{..`
+  and `{^` already use, so declarations sit at the top instead of inside an
+  arm. RiX has no free names, so `2n:x:!2n+1` needs `n` declared somewhere; the
+  header keeps the chain text identical to Core's `R.region` and
+  `@ratmath/analytic`, which read the same spelling.
+- **`;` splits variables from integers, and integers default to `Integer`.**
+  `n::T` restricts a binder and types chain as an intersection, with `::!`
+  excluding a type. The same chains work in `x ? :Positive::!Even`, because a
+  restriction written one way in a header and another way in a check would be
+  a needless difference. `Natural` starts at 0; `Positive` starts at 1.
+- **Shapes are declared, not detected.** Whether an arbitrary `validate`
+  function describes an arithmetic progression cannot be decided, so a type
+  that wants the closed-form path declares `{= mod, residues, min, max }`.
+  Shapes are closed under intersection and, for residue classes and one-sided
+  bounds, under exclusion, so chained built-in types never fall off the fast
+  path. RiX derives `validate`, next and previous from the shape, so a shape
+  cannot disagree with its own test.
+- **Neighbors go in the header, not the chain.** "The next odd after n" was
+  first floated as `n:x:+m`. In chains `:+` is already the stepped sequence
+  (`a:b:+step`), `:-m` is a chain ending at `-m`, and `:<` opens a custom
+  operator; only `:>` was free and it has no "below" partner. Changing chain
+  spelling would also have meant changing Core and analytic. `m::Odd > n` reads
+  as mathematics ("the least odd m above n") and leaves chains alone.
+- **Gaps give `_`, undecided gives `?`, intervals give the hull.** These match
+  `{? }` (no match is `_`, an undecided arm is `?`) and RiX's interval
+  arithmetic, which returns enclosures. James decided all three on 2026-11-24.
+- **Several variables now, analysis later.** `/x, y; n, m/` parses and
+  evaluates at points so programs can be written in their final form;
+  multivariable breakpoints wait for a multivariable `Region` in Core. As
+  regions get more general, less can be analysed: affine one-variable regions
+  are exact, typed and searched integers stay exact, coupled and predicate
+  regions answer only at points. See [piecewise functions](eval/piecewise.md).
+- **`region ? rule` keeps the whole union as the region.** In `{? }`, `?`
+  binds tighter than `||`, and `?(` is the ask operator. Inside `{?:` both
+  would turn natural arms into surprises, so the literal re-associates the
+  arm's top-level `?` and splits a leading ask back into region and rule.
+
 ## Multifunctions (2026-04-01)
 
 RiX multifunctions are ordered arrays of callable variants with dispatch driven by prep success.

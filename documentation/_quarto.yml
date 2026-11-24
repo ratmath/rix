@@ -29,6 +29,7 @@ project:
     - eval/controls-guide.md
     - eval/syntax-guide.md
     - eval/function-returns.md
+    - eval/piecewise.md
     - eval/course-calculus.md
     - eval/number-notation.md
     - eval/linting.md

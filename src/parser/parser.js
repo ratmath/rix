@@ -494,6 +494,7 @@ const SYMBOL_TABLE = {
   // Brace sigil containers
   "{=": { precedence: 0, type: "brace_sigil" },
   "{?": { precedence: 0, type: "brace_sigil" },
+  "{?:": { precedence: 0, type: "brace_sigil" },
   "{;": { precedence: 0, type: "brace_sigil" },
   "{|": { precedence: 0, type: "brace_sigil" },
   "{:": { precedence: 0, type: "brace_sigil" },
@@ -525,6 +526,23 @@ const SYMBOL_TABLE = {
   "|": { precedence: 0, type: "separator" },
   "|}": { precedence: 0, type: "separator" },
 };
+
+function semanticChainFromIntervalDivision(node) {
+  if (node?.type !== "IntervalDivision") return null;
+  const head = node.interval?.type === "String" && node.interval.kind === "colon"
+    ? [{ name: node.interval.value, exclude: false }]
+    : semanticChainFromIntervalDivision(node.interval);
+  if (!head) return null;
+  let link = node.count;
+  let exclude = false;
+  if (link?.type === "UnaryOperation" && link.operator === "!") {
+    exclude = true;
+    link = link.operand;
+  }
+  if (link?.type !== "SystemIdentifier" && link?.type !== "UserIdentifier") return null;
+  const name = String(link.original ?? link.name).trim();
+  return [...head, { name, exclude }];
+}
 
 export class RixParseError extends Error {
   constructor(message, options = {}) {
@@ -1095,7 +1113,7 @@ class Parser {
           return this.parseMathematicalContext();
         } else if (token.value === ":::") {
           return this.parseSymbolicVariable(false);
-        } else if (token.value === "{=" || token.value === "{?" || token.value === "{;" || token.value === "{|" || token.value === "{:" || token.value === "{@" || token.value === "{#" || token.value === "{.." || token.value === "{>" || token.value === "{~"
+        } else if (token.value === "{=" || token.value === "{?" || token.value === "{?:" || token.value === "{;" || token.value === "{|" || token.value === "{:" || token.value === "{@" || token.value === "{#" || token.value === "{.." || token.value === "{>" || token.value === "{~"
           || token.value === "{^"
           || token.value === "{$"
           || token.value === "{$$") {
@@ -1155,7 +1173,7 @@ class Parser {
 
           // @ followed by { or brace sigil = deferred block: @{; ...}, @{? ...}, @{...}
           const nextVal = this.current.value;
-          if (nextVal === "{" || nextVal === "{;" || nextVal === "{?" || nextVal === "{=" || nextVal === "{|" || nextVal === "{:" || nextVal === "{@" || nextVal === "{#" || nextVal === "{$" || nextVal === "{$$" || nextVal === "{.." || nextVal === "{^" || nextVal === "{>") {
+          if (nextVal === "{" || nextVal === "{;" || nextVal === "{?" || nextVal === "{?:" || nextVal === "{=" || nextVal === "{|" || nextVal === "{:" || nextVal === "{@" || nextVal === "{#" || nextVal === "{$" || nextVal === "{$$" || nextVal === "{.." || nextVal === "{^" || nextVal === "{>") {
             let inner;
             if (nextVal === "{") {
               inner = this.parseBraceContainer();
@@ -1937,6 +1955,17 @@ class Parser {
         return this.createNode("SemanticHas", {
           expression: left,
           name: right.value,
+          pos: left.pos,
+          original: left.original + operator.original + right.original,
+        });
+      }
+      // x ? :Positive::Even::!Odd reads '::' as a chain of type links.
+      const semanticChain = semanticChainFromIntervalDivision(right);
+      if (semanticChain) {
+        return this.createNode("SemanticHas", {
+          expression: left,
+          name: semanticChain[0].name,
+          chain: semanticChain,
           pos: left.pos,
           original: left.original + operator.original + right.original,
         });
@@ -3478,6 +3507,90 @@ class Parser {
     });
   }
 
+  // {?: /x, y; n::Natural::!Even, m::Odd > n #Name :trait/ ... }
+  // Variables come first, then (after ';') integer binders. Each integer
+  // may carry chained types ('::T' requires, '::!T' excludes) and may be a
+  // neighbor of an earlier integer ('m::Odd > n' is the least Odd above n).
+  parsePiecewiseHeader() {
+    if (this.current.value !== "/") {
+      this.error("A piecewise literal needs a /variables; integers/ header, as in {?: /x; n/ n:x:!n+1 ? x - n }");
+    }
+    const startToken = this.current;
+    this.advance();
+    const readName = (what) => {
+      const token = this.current;
+      if (token.type !== "Identifier") this.error(`Expected ${what} name in piecewise header`);
+      const name = token.original.trim();
+      const pattern = what === "type" ? /^[A-Za-z][A-Za-z0-9_]*$/ : /^[a-z][A-Za-z0-9_]*$/;
+      if (!pattern.test(name)) this.error(`Piecewise ${what} names must start with a ${what === "type" ? "letter" : "lowercase letter"} and contain only letters, digits, or underscores`);
+      this.advance();
+      return name;
+    };
+    const variables = [readName("variable")];
+    while (this.current.value === ",") {
+      this.advance();
+      variables.push(readName("variable"));
+    }
+    const integers = [];
+    if (this.current.value === ";") {
+      this.advance();
+      do {
+        if (this.current.value === ",") this.advance();
+        const name = readName("integer");
+        const types = [];
+        while (this.current.value === "::") {
+          this.advance();
+          let exclude = false;
+          if (this.current.value === "!") {
+            exclude = true;
+            this.advance();
+          }
+          types.push({ name: readName("type"), exclude });
+        }
+        let neighbor = null;
+        if ([">", ">=", "<", "<="].includes(this.current.value)) {
+          const relation = this.current.value;
+          this.advance();
+          neighbor = { relation, of: readName("integer") };
+        }
+        integers.push({ name, types, ...(neighbor ? { neighbor } : {}) });
+      } while (this.current.value === ",");
+    }
+    let name = null;
+    const traits = [];
+    while (this.current.value !== "/" && this.current.type !== "End") {
+      if (this.current.type === "ActiveBaseNumber" && /^#[A-Za-z][A-Za-z0-9_]*$/.test(this.current.original.trim())) {
+        if (name !== null) this.error("Header may only specify one name");
+        name = this.current.original.trim().slice(1);
+        this.advance();
+        continue;
+      }
+      if (this.current.value === "#") {
+        this.advance();
+        if (name !== null) this.error("Header may only specify one name");
+        name = this.parseHeaderDirectiveName();
+        continue;
+      }
+      if (this.current.value === ":") {
+        this.advance();
+        traits.push(this.parseHeaderDirectiveName());
+        continue;
+      }
+      this.error(`Invalid directive ${JSON.stringify(this.current.value)} in piecewise header; expected '; integers', '#name', or ':trait'`);
+    }
+    if (this.current.value !== "/") this.error("Unterminated piecewise /.../ header");
+    const end = this.current.pos[2];
+    this.advance();
+    return this.createNode("PiecewiseHeader", {
+      variables,
+      integers,
+      name,
+      traits,
+      pos: [startToken.pos[0], startToken.pos[1], end],
+      original: this.source ? this.source.slice(startToken.pos[0], end) : startToken.original,
+    });
+  }
+
   parseValueOutfit() {
     const startToken = this.current;
     this.advance(); // consume {^
@@ -3516,6 +3629,7 @@ class Parser {
       "{..": "ArrayContainer",
       "{=": "MapContainer",
       "{?": "CaseContainer",
+      "{?:": "PiecewiseContainer",
       "{;": "BlockContainer",
       "{|": "SetContainer",
       "{:": "TupleContainer",
@@ -3530,7 +3644,7 @@ class Parser {
     const nodeType = sigilTypeMap[effectiveSigil];
 
     // Determine separator: temporal (;) vs spatial (,)
-    const temporalSigils = new Set(["{?", "{;", "{@", "{$", "{$$"]);
+    const temporalSigils = new Set(["{?", "{?:", "{;", "{@", "{$", "{$$"]);
     const isTemporal = temporalSigils.has(effectiveSigil);
     const closerMap = {
       "{|": ["|}", "}"],
@@ -3560,8 +3674,9 @@ class Parser {
       elements.push(this.createNode("Hole", { original: "" }));
     };
 
-    const header =
-      effectiveSigil === "{=" ||
+    const header = effectiveSigil === "{?:"
+      ? this.parsePiecewiseHeader()
+      : effectiveSigil === "{=" ||
       effectiveSigil === "{|" ||
       effectiveSigil === "{:" ||
       effectiveSigil === "{.."
@@ -3652,7 +3767,11 @@ class Parser {
     if (!isCloser(this.current.value)) {
       this.error(`Expected closing ${primaryCloser} for ${nodeType}`);
     }
+    const closerToken = this.current;
     this.advance(); // consume closer
+    const sourceText = effectiveSigil === "{?:" && this.source
+      ? this.source.slice(startToken.pos[1], closerToken.pos[2])
+      : null;
     if (effectiveSigil === "{~" && (elements.length < 2 || elements.length > 3)) {
       this.error("Halo neighborhood requires target, positive epsilon, and optional limits map");
     }
@@ -3667,6 +3786,7 @@ class Parser {
       ...(effectiveSigil === "{$" && options.asyncLimit !== undefined ? { concurrencyLimit: options.asyncLimit } : {}),
       ...(effectiveSigil === "{$" && options.asyncTimeout !== undefined ? { timeoutSeconds: options.asyncTimeout } : {}),
       ...(header ? { header } : {}),
+      ...(sourceText ? { sourceText } : {}),
       ...(imports.length > 0 ? { imports: imports } : {}),
       elements: elements,
       pos: startToken.pos,

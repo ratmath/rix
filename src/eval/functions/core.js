@@ -21,7 +21,8 @@ import {
     copyAllMeta, transferMetaForUpdate,
 } from "../../runtime/cell.js";
 import { isShaped } from "../../runtime/shaped.js";
-import { applySemanticHeader, applyUpdateSemantics, convertSemanticType, mergeStickyHeader, readStickyHeader, rebuildSemanticMetadata, refreshRuntimeMetadata, valueHasSemanticMembership, valueSatisfiesTrait } from "../../runtime/semantic.js";
+import { applySemanticHeader, applyUpdateSemantics, convertSemanticType, mergeStickyHeader, readStickyHeader, rebuildSemanticMetadata, refreshRuntimeMetadata, valueHasSemanticMembership,
+    valueHasSemanticChain, valueSatisfiesTrait } from "../../runtime/semantic.js";
 import { attachBuiltinProto } from "../../runtime/methods.js";
 import { captureIrValue, constructorDefaultCaptureMode } from "../../runtime/constructor-capture.js";
 import { keyOf } from "./keyof.js";
@@ -1790,6 +1791,9 @@ export const coreFunctions = {
         impl(args, context, evaluate) {
             const value = evaluate(args[0]);
             const name = args[1];
+            if (Array.isArray(args[2])) {
+                return valueHasSemanticChain(value, args[2]) ? new Integer(1n) : null;
+            }
             return valueHasSemanticMembership(value, name) ? new Integer(1n) : null;
         },
         doc: "Check semantic type/trait membership against __type, _type, and __traits",

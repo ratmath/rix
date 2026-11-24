@@ -46,6 +46,7 @@ Types are immutable protocol bundles. A type can define conversion, normalizatio
 Built-in registered types include:
 
 - `:Integer`
+- `:Natural`, `:Positive`, `:Negative`, `:Even`, `:Odd` (integer subtypes with shapes)
 - `:Rational`
 - `:RationalInterval`
 - `:CertifiedApproximation`
@@ -186,6 +187,24 @@ runtime.
 Constructors that return structured records with invariants can finish with
 `.ImmutableValue(value)`. This marks the returned value itself—not merely its
 temporary local cell—so later entry or metadata mutation is rejected.
+
+### Integer subtypes and shapes
+
+An integer subtype can declare a *shape*: the integers whose remainder modulo
+`mod` is in `residues`, optionally bounded by `min` and `max`. RiX derives the
+type's validation, conversion, and next/previous members from the shape.
+
+```rix
+.IntegerType(:ThreeMod4, {= mod=4, residues=[3], min=0 })
+.TypeRegister({= name=:OneMod3, shape={= mod=3, residues=[1] } })
+7 ? :ThreeMod4             ## 1
+4 ? :Positive::Even        ## 1 (links chain with ::)
+3 ? :Positive::!Even       ## 1 (::! negates a link)
+```
+
+A registered type without a shape may supply `validate` and, optionally,
+`next` and `prev` hooks; [piecewise functions](piecewise.md) then step through
+integers to find its members.
 
 Hosts can still use the JS-side helpers in `src/runtime/type-system.js` for core bootstrapping:
 

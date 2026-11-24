@@ -245,6 +245,25 @@ failure throws. Ordinary case expressions remain unconditional fallbacks:
 }
 ```
 
+#### Piecewise Functions
+
+`{?: /x; n/ region ? rule; ...; default }` builds a callable from arms that
+read like a case block. The `/.../` header names the variables and, after `;`,
+the integers each region solves for; integers default to `Integer` and take
+chained types (`n::Natural::!Even`) and neighbor relations (`m::Odd > n`).
+Regions are betweenness chains in the shared Core spelling.
+
+```rix
+Saw    := {?: /x; n/ n:x:!n+1 ? x - n }
+Square := {?: /x; n/ 2n:x:!2n+1 ? 1; -1 }
+Step   := {?: /x; n::Even, m::Odd > n/ n:x:!m ? 1; 0 }
+```
+
+The first arm that holds wins; no match gives `_`; interval input gives the
+hull; a certified value straddling a breakpoint gives `?`. `.Breaks(F, a:b)`
+and `.Pieces(F)` inspect the regions. Full reference, tiers, and what is not
+implemented yet: [Piecewise functions](piecewise.md).
+
 #### Multifunctions
 
 Multifunctions are callable arrays marked with `._type = :multifunction`. RiX automatically applies that mark when an uppercase identifier is assigned an array. The explicit `{> ... }` literal creates the same runtime value directly, which is especially useful inline with pipes.
@@ -460,6 +479,8 @@ Rules:
 - `x ? :name` succeeds if any of these are true: `x.__type == :name`, `x._type == :name`, or `:name` is contained in `x.__traits`
 - successful inquiry returns a non-null truthy value; failure returns `_`
 - no trait inheritance or group expansion is applied here
+- an integer subtype with a shape (`Natural`, `Positive`, `Negative`, `Even`, `Odd`, or one made with `.IntegerType`) tests the value itself: `4 ? :Even` is `1`
+- links chain with `::` and every link must hold; `::!` negates a link: `3 ? :Positive::!Even` is `1`
 - `x ~: :type` reuses the same semantic type conversion/canonicalization path as `{^ /::type/ x}`
 - `x ~: :type` returns the converted value on success, otherwise `_`
 - `x ~!: :type` returns the converted value on success and throws on failure
@@ -584,6 +605,7 @@ u \= {| 2 |}
 | `{$ ... }`, `{$name:4$ ... }`, `{$name:limit=4,timeout=5$ ... }` | `ASYNC_SCOPE` | Awaited concurrency code block. Explicit collection entries fan out with a default limit of 10; statements remain sequential. Timeout is in positive integer seconds. Supports an optional top-of-block import header. |
 | `{$$ ... }` | `DETACH` | Start one supervised background code block and immediately return `null`; its statements remain sequential. Only listed imports are visible: ordinary imports are deep snapshots, ordinary aliases are rejected, and reactive alias imports retain their graph identity. |
 | `{? c1 ? v1; c2 ? v2; default }` | `CASE` | Conditional branching (if/elseif/else) |
+| `{?: /x; n/ region ? rule; ...; default }` | `PIECEWISE` | Piecewise function; the header declares variables and solved integers. See [Piecewise functions](piecewise.md) |
 | `{@ init; cond; body; update }` | `LOOP` | Loop with init, condition, body, update. A fifth `after` slot may be added: `{@ init; cond; body; update; after }`; it runs on normal completion and supplies the loop result. Loop headers also support `{@name@ ... }`, `{@:100@ ... }`, `{@name:100@ ... }`, `{@::@ ... }`, and `{@name::@ ... }`. Optional top-of-block import header: `{@ <...> ... }` |
 | `{! expr }` | `BREAK` | Break the nearest matching block/case/loop and use `expr` as that target's final value. `{!$name! expr }` races to exit a named async scope. |
 | `{#x}`, `{#x,y# x + y }`, `{#x:y# y^2 == x }` | `SYSTEM_SPEC` | Identity, expression, and inert symbolic-system literals. Optional import header on full forms. |

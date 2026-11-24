@@ -4,6 +4,21 @@
 
 ### Added
 
+- Piecewise functions: `{?: /x; n/ region ? rule; ...; default }` builds a
+  callable. The `/.../` header declares variables and, after `;`, integers
+  that each region solves for (`Saw := {?: /x; n/ n:x:!n+1 ? x - n }`).
+  Integers take chained types (`n::Positive::!Even`) and neighbor relations
+  (`m::Odd > n`, the least odd above n). First match wins, no match gives
+  `_`, interval input gives the hull, and a certified value straddling a
+  breakpoint gives `?`. `.Breaks(F, a:b)` and `.Pieces(F)` inspect the
+  regions. Several variables (`/x, y; n, m/`) evaluate at points;
+  multivariable breakpoints, piecewise derivatives, and an analytic export are
+  not implemented yet. See `documentation/eval/piecewise.md`.
+- Integer subtypes `Natural` (n >= 0), `Positive`, `Negative`, `Even` and
+  `Odd`, and `.IntegerType(:Name, {= mod, residues, min, max })` for user
+  subtypes; `.TypeRegister` also accepts `shape`, `next` and `prev`. Type
+  checks chain: `x ? :Positive::Even`, and `::!` negates a link.
+
 - Betweenness chains take strict links and unbounded ends, as two-character
   tokens: `:!` is strict (`2:!x:8` is 2 < x ≤ 8, `2:x:!8` is 2 ≤ x < 8), and
   `_:` / `:_` are unbounded ends (`_:x:8` is x ≤ 8, `2:x:_` is x ≥ 2; a chain

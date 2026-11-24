@@ -8,6 +8,7 @@ import {
     valueBelongsToScalarDomain,
 } from "./shaped.js";
 import { callWithConcreteArgs } from "../eval/functions/functions.js";
+import { INTEGER_SHAPES, normalizeShape, shapeHas } from "./integer-types.js";
 import { UNDECIDED, UndecidedDiagnostic, isUndecided } from "./decision.js";
 import {
     executeRangeOperation,
@@ -1158,6 +1159,16 @@ export function registerBuiltinSemanticTypes() {
     registerType({ name: "Covector", nativeType: "covector", defaultTraits: [], convert: (value) => value?.type === "covector" ? value : null, validate: (value) => value?.type === "covector", proto: () => makeProto([["Describe", valueMethod("Describe", () => stringObj("type:Covector"))]]) });
     registerType({ name: "Tensor", nativeType: "tensor", defaultTraits: [], convert: (value) => value?.type === "tensor" ? value : null, validate: (value) => value?.type === "tensor", proto: () => makeProto([["Describe", valueMethod("Describe", () => stringObj("type:Tensor"))]]) });
 
+    for (const [name, description] of [
+        ["Natural", "integers n >= 0"],
+        ["Positive", "integers n >= 1"],
+        ["Negative", "integers n <= -1"],
+        ["Even", "even integers"],
+        ["Odd", "odd integers"],
+    ]) {
+        registerType(integerSubtypeSpec(name, INTEGER_SHAPES[name.toLowerCase()], description));
+    }
+
     for (const name of typeRegistry.list()) builtinTypeNames.add(semanticNameKey(name));
     builtinsRegistered = true;
 }
@@ -1364,8 +1375,14 @@ export function registerTypeFromRixSpec(spec, context = null) {
     if (!spec || spec.type !== "map" || !(spec.entries instanceof Map)) {
         throw new Error("TypeRegister expects a map spec");
     }
+    const shapeValue = mapGet(spec, "shape");
+    if (shapeValue !== undefined && shapeValue !== null) {
+        return registerIntegerTypeFromRix(mapGet(spec, "name"), shapeValue, context, spec);
+    }
     const proto = protoFromRixMap(mapGet(spec, "proto"), context) || makeProto();
     const registration = {
+        next: captureHook(mapGet(spec, "next") || null, context),
+        prev: captureHook(mapGet(spec, "prev") || null, context),
         name: colonName(mapGet(spec, "name")),
         aliases: listNames(mapGet(spec, "aliases")),
         nativeType: colonName(mapGet(spec, "nativeType")),
@@ -1394,3 +1411,79 @@ export function registerTypeFromRixSpec(spec, context = null) {
 }
 
 registerBuiltinSemanticTypes();
+
+
+// ---- integer subtypes ---------------------------------------------------------
+
+function integerSubtypeSpec(name, shape, description = "") {
+    return {
+        name,
+        nativeType: "integer",
+        parent: "Integer",
+        defaultTraits: ["integer", "rational", "number", "ordered"],
+        shape,
+        convert: (value) => (value instanceof Integer && shapeHas(shape, value.value) ? value : null),
+        validate: (value) => value instanceof Integer && shapeHas(shape, value.value),
+        proto: () => makeProto([["Describe", valueMethod("Describe", () => stringObj(`type:${name}`))]]),
+        description,
+    };
+}
+
+function shapeFromRixMap(value) {
+    if (!value || value.type !== "map" || !(value.entries instanceof Map)) {
+        throw new Error("An integer type shape is a map such as {= mod=4, residues=[3], min=0 }");
+    }
+    const residues = mapGet(value, "residues");
+    const list = residues === undefined || residues === null
+        ? undefined
+        : isRixList(residues) ? residues.values : [residues];
+    return normalizeShape({
+        mod: mapGet(value, "mod") ?? undefined,
+        residues: list,
+        min: mapGet(value, "min") ?? null,
+        max: mapGet(value, "max") ?? null,
+    });
+}
+
+export function registerIntegerTypeFromRix(nameValue, shapeValue, context = null, spec = null) {
+    const name = colonName(nameValue);
+    if (!name) throw new Error("IntegerType needs a name such as :ThreeMod4");
+    const shape = shapeFromRixMap(shapeValue);
+    const registration = integerSubtypeSpec(name, shape);
+    if (spec) {
+        const proto = protoFromRixMap(mapGet(spec, "proto"), context);
+        if (proto) registration.proto = () => proto;
+        const aliases = listNames(mapGet(spec, "aliases"));
+        if (aliases.length) registration.aliases = aliases;
+    }
+    const entry = typeRegistry.has(name) ? replaceRegisteredType(registration) : registerType(registration);
+    if (context?.getEnv && context?.setEnv) {
+        const registered = context.getEnv("__rix_registered_types__", new Set());
+        registered.add(entry.name);
+        context.setEnv("__rix_registered_types__", registered);
+    }
+    return entry;
+}
+
+/**
+ * Resolve a type name used on a piecewise integer binder or in a chained
+ * type check: { shape } for shaped types, otherwise { test, next?, prev? }.
+ */
+export function resolveIntegerType(name, context = null, evaluate = null) {
+    if (semanticNameKey(name) === "integer") return { shape: INTEGER_SHAPES.integer };
+    const entry = typeRegistry.get(name);
+    if (!entry || !typeKnownInContext(name, context)) throw new Error(`Unknown semantic type: ${name}`);
+    if (entry.shape) return { shape: entry.shape };
+    if (!entry.validate) throw new Error(`Type ${entry.name} has no shape or validate hook, so it cannot restrict an integer`);
+    const asBig = (value) => {
+        if (value === null || value === undefined) return null;
+        if (value instanceof Integer) return value.value;
+        if (value instanceof Rational && value.denominator === 1n) return value.numerator;
+        throw new Error(`Type ${entry.name}'s next/prev hook must return an integer or _`);
+    };
+    return {
+        test: (n) => truthy(invokeMaybeCallable(entry.validate, [new Integer(n)], context, evaluate)),
+        ...(entry.next ? { next: (n) => asBig(invokeMaybeCallable(entry.next, [new Integer(n)], context, evaluate)) } : {}),
+        ...(entry.prev ? { prev: (n) => asBig(invokeMaybeCallable(entry.prev, [new Integer(n)], context, evaluate)) } : {}),
+    };
+}

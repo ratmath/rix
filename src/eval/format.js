@@ -512,6 +512,9 @@ export function formatValue(val, options = {}) {
                 return `{= ${entries.join(", ")} }`;
             });
         }
+        if (val.__piecewise?.source) {
+            return `[Piecewise: ${val.__piecewise.source}]`;
+        }
         if (val.type === "function" || val.type === "lambda") {
             return formatCallablePreview(val, val.type === "lambda" ? "Lambda" : "Function");
         }

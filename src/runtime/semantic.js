@@ -1,5 +1,6 @@
 import { CertifiedApproximation, Integer, Rational, RationalInterval } from "@ratmath/core";
 import { isUndecided } from "./decision.js";
+import { shapeHas } from "./integer-types.js";
 import { createEvent, getCurrentFilePath, getDiagnostics } from "./diagnostics.js";
 import {
     convertToRegisteredType,
@@ -174,6 +175,10 @@ export function valueHasSemanticMembership(value, name) {
     if (requestedType && runtimeType && requestedType.name === runtimeType.name) {
         return true;
     }
+    // Integer subtypes (Natural, Even, user .IntegerType shapes) test the value.
+    if (requestedType?.shape && value instanceof Integer && shapeHas(requestedType.shape, value.value)) {
+        return true;
+    }
 
     const ext = value?._ext;
     if (!(ext instanceof Map) || !name) {
@@ -331,4 +336,10 @@ export function rebuildSemanticMetadata(value, context) {
         checkTraits(value, context);
     }
     return value;
+}
+
+
+/** x ? :Positive::Even::!Odd — every link must hold; '::!' negates a link. */
+export function valueHasSemanticChain(value, chain) {
+    return chain.every(({ name, exclude }) => valueHasSemanticMembership(value, name) !== exclude);
 }

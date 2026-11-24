@@ -76,6 +76,10 @@ from the active function call, including from prep or a nested block, rather
 than selecting another variant. They are errors outside a call. See
 [diagnostic guards and early returns](eval/function-returns.md).
 
+Piecewise functions declare their variable and any integer the regions solve
+for, then list `region ? rule` arms: `Saw := {?: /x; n/ n:x:!n+1 ? x - n }`.
+See [piecewise functions](eval/piecewise.md).
+
 ## Containers announce what they are
 
 ```{.rix exec=true}
