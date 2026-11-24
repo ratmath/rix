@@ -38541,6 +38541,9 @@ symbolicNamespace._proto = {=
     get digitOffset() {
       return this.#digitOffset;
     }
+    get isPositional() {
+      return true;
+    }
     get supportsPositionalFractions() {
       return this.#radix === this.#base && this.#digitOffset === 0;
     }
@@ -38721,7 +38724,7 @@ symbolicNamespace._proto = {=
       return `${this.#name} (${charPreview})`;
     }
     equals(other) {
-      if (!(other instanceof BaseSystem)) {
+      if (!(other instanceof BaseSystem) || other.isPositional !== this.isPositional) {
         return false;
       }
       if (this.#base !== other.#base || this.#radix !== other.#radix || this.#digitOffset !== other.#digitOffset) {
@@ -38882,7 +38885,90 @@ symbolicNamespace._proto = {=
   BaseSystem.BASE62 = new BaseSystem("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""), "Base 62");
   BaseSystem.BASE64 = new BaseSystem("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@&".split(""), "Base 64");
   BaseSystem.BASE60 = new BaseSystem("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWX".split(""), "Base 60 (Mesopotamia)");
-  BaseSystem.ROMAN = new BaseSystem(["I", "V", "X", "L", "C", "D", "M"], "Roman Numerals");
+  var ROMAN_VALUES = [
+    [1000n, "M"],
+    [900n, "CM"],
+    [500n, "D"],
+    [400n, "CD"],
+    [100n, "C"],
+    [90n, "XC"],
+    [50n, "L"],
+    [40n, "XL"],
+    [10n, "X"],
+    [9n, "IX"],
+    [5n, "V"],
+    [4n, "IV"],
+    [1n, "I"]
+  ];
+
+  class RomanNumerals extends BaseSystem {
+    constructor() {
+      super(["I", "V", "X", "L", "C", "D", "M"], "Roman Numerals");
+    }
+    get isPositional() {
+      return false;
+    }
+    get supportsPositionalFractions() {
+      return false;
+    }
+    toDecimal(str) {
+      if (typeof str !== "string" || str.length === 0) {
+        throw new Error("Input must be a non-empty string");
+      }
+      const negative = str.startsWith("-");
+      const body = (negative ? str.slice(1) : str).toUpperCase();
+      if (!/^[IVXLCDM]+$/.test(body))
+        throw new Error(`Invalid Roman numeral '${str}'`);
+      let value = 0n;
+      let rest = body;
+      for (const [amount, symbol] of ROMAN_VALUES) {
+        while (rest.startsWith(symbol)) {
+          value += amount;
+          rest = rest.slice(symbol.length);
+        }
+      }
+      if (rest.length || value > 3999n || this.fromDecimal(value) !== body) {
+        throw new Error(`'${str}' is not a standard Roman numeral (1 to 3999)`);
+      }
+      return negative ? -value : value;
+    }
+    fromDecimal(value) {
+      if (typeof value !== "bigint")
+        throw new Error("Value must be a BigInt");
+      if (value < 0n)
+        return `-${this.fromDecimal(-value)}`;
+      if (value === 0n)
+        throw new Error("Roman numerals have no zero");
+      if (value > 3999n)
+        throw new RangeError("Roman numerals here run from 1 to 3999");
+      let out = "";
+      for (const [amount, symbol] of ROMAN_VALUES) {
+        while (value >= amount) {
+          out += symbol;
+          value -= amount;
+        }
+      }
+      return out;
+    }
+    isValidString(str) {
+      try {
+        this.toDecimal(str);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    withCaseSensitivity() {
+      return this;
+    }
+    equals(other) {
+      return other instanceof RomanNumerals;
+    }
+    toJSON() {
+      return { $ratmath: "BaseSystem", kind: "roman", name: "Roman Numerals" };
+    }
+  }
+  BaseSystem.ROMAN = new RomanNumerals;
   BaseSystem.registerPrefix("b", BaseSystem.BINARY);
   BaseSystem.registerPrefix("t", BaseSystem.TERNARY);
   BaseSystem.registerPrefix("q", BaseSystem.QUATERNARY);
@@ -38985,11 +39071,15 @@ symbolicNamespace._proto = {=
   }
   function parseRationalParts(input) {
     let value = inputString(input, "rational");
-    if (value.startsWith("~")) {
-      value = value.slice(1);
-    }
-    const continued = value.match(new RegExp(`^([+-]?${DIGITS})\\.~(${DIGITS}(?:~${DIGITS})*)$`));
+    const explicit = value.startsWith("~");
+    const cfText = explicit ? value.slice(1) : value;
+    const continued = cfText.match(new RegExp(`^([+-]?${DIGITS})\\.~(${DIGITS}(?:~${DIGITS})*)$`));
     if (continued) {
+      const signText = continued[1][0];
+      if (!explicit && (signText === "-" || signText === "+")) {
+        const [n, d] = parseRationalParts(continued[0].slice(1));
+        return [signText === "-" ? -n : n, d];
+      }
       const first = BigInt(cleanDigits(continued[1], { signed: true }));
       const tail = continued[2].split("~").map((term) => BigInt(cleanDigits(term)));
       if (tail.length === 1 && tail[0] === 0n) {
@@ -38997,6 +39087,8 @@ symbolicNamespace._proto = {=
       }
       return continuedFractionParts([first, ...tail]);
     }
+    if (explicit)
+      throw new Error(`Invalid continued fraction: ${input}`);
     const mixed = value.match(new RegExp(`^([+-]?)(${DIGITS})\\.\\.(${DIGITS})\\/(${DIGITS})$`));
     if (mixed) {
       const sign = mixed[1] === "-" ? -1n : 1n;
@@ -39026,6 +39118,17 @@ symbolicNamespace._proto = {=
       return [BigInt(cleanDigits(value, { signed: true })), 1n];
     }
     throw new Error(`Invalid rational number: ${input}`);
+  }
+  function negateContinuedFraction(terms) {
+    const [a0, a1, ...rest] = terms;
+    if (a1 === undefined)
+      return [-a0];
+    if (a1 > 1n)
+      return [-a0 - 1n, 1n, a1 - 1n, ...rest];
+    if (rest.length === 0)
+      return [-a0 - 1n];
+    const [a2, ...more] = rest;
+    return [-a0 - 1n, a2 + 1n, ...more];
   }
   function continuedFractionParts(terms) {
     for (const term of terms.slice(1)) {
@@ -40155,7 +40258,11 @@ symbolicNamespace._proto = {=
       if (typeof cfString !== "string") {
         throw new TypeError("Continued fraction must be a string");
       }
-      const cfMatch = cfString.match(/^(-?\d+)\.~(.*)$/);
+      if (/^[-+]\d/.test(cfString) && cfString.includes(".~")) {
+        const terms = Rational.#continuedFractionString(cfString.slice(1));
+        return cfString[0] === "-" ? negateContinuedFraction(terms) : terms;
+      }
+      const cfMatch = cfString.match(/^~?(-?\d+)\.~(.*)$/);
       if (!cfMatch) {
         throw new Error("Invalid continued fraction format");
       }
@@ -40309,7 +40416,8 @@ symbolicNamespace._proto = {=
       const intPart = cf[0];
       const cfTerms = cf.slice(1);
       const suffix = complete ? "" : "~...";
-      return `${intPart}.~${cfTerms.join("~")}${suffix}`;
+      const sign = intPart < 0n ? "~" : "";
+      return `${sign}${intPart}.~${cfTerms.join("~")}${suffix}`;
     }
     static fromContinuedFractionString(cfString) {
       return Rational.fromContinuedFraction(Rational.#continuedFractionString(cfString));
@@ -43052,7 +43160,8 @@ symbolicNamespace._proto = {=
     if (extended.length <= maxTerms)
       return exactScalar(rational);
     const [first, ...tail] = coefficients;
-    const original = tail.length ? `${first}.~${tail.join("~")}?` : `${first}.~?`;
+    const sign = first < 0n ? "~" : "";
+    const original = tail.length ? `${sign}${first}.~${tail.join("~")}?` : `${sign}${first}.~?`;
     return certifiedContinuedFractionPrefix({
       coefficients,
       original,
@@ -43328,7 +43437,10 @@ symbolicNamespace._proto = {=
         fail("invalid radix shift");
       source = shifts[0];
       let result;
-      if (source.includes(".~")) {
+      if (source.includes(".~") && source.startsWith("-")) {
+        result = this.parse(source.slice(1) + (shifts.length === 2 ? `_^${shifts[1]}` : "")).negate();
+        return exact(result);
+      } else if (source.includes(".~")) {
         const parts = source.replace(/^~/, "").replace(".~", "~").split("~");
         if (parts.length < 2 || parts.length > 256)
           fail("continued-fraction term budget exceeded");
@@ -43631,12 +43743,16 @@ symbolicNamespace._proto = {=
       });
     }
     const explicitCf = value.startsWith("~");
+    if (!explicitCf && /^[-+]\d(?:_?\d)*\.~/.test(value)) {
+      const positive = parseApproximation(value.slice(1));
+      return value[0] === "-" ? positive.negate() : positive;
+    }
     const cfValue = explicitCf ? value.slice(1) : value;
-    const cf = cfValue.match(new RegExp(`^([+-]?${DIGITS})\\.~(${DIGITS}(?:~${DIGITS})*)\\?(${DIGITS}(?:~${DIGITS})*)?$`));
+    const cf = cfValue.match(new RegExp(`^([+-]?${DIGITS})\\.~((?:${DIGITS}(?:~${DIGITS})*)?)\\?(${DIGITS}(?:~${DIGITS})*)?$`));
     if (cf) {
       const certified = [
         BigInt(cleanDigits(cf[1], { signed: true })),
-        ...cf[2].split("~").map((term) => BigInt(cleanDigits(term)))
+        ...cf[2] ? cf[2].split("~").map((term) => BigInt(cleanDigits(term))) : []
       ];
       const provisional = cf[3] ? cf[3].split("~").map((term) => BigInt(cleanDigits(term))) : [];
       return certifiedContinuedFractionPrefix({
