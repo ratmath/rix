@@ -1,5 +1,6 @@
-// A host plugin package as `rix --host-module` sees it: it exports
-// registerRixPlugins(catalog) and approves its own installers.
+// A stand-in for @ratmath/rix-bridge as `rix --ratmath=PATH` sees it: it
+// exports registerRixPlugins(catalog), approves its own installers and
+// returns the plugin ids to load.
 import { Integer } from "@ratmath/core";
 
 const metadata = {
@@ -25,4 +26,5 @@ function install({ systemContext }) {
 export function registerRixPlugins(catalog) {
     catalog.addMetadata(metadata, { kind: "host" });
     catalog.registerInstaller(metadata.id, install);
+    return [metadata.id];
 }

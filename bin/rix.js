@@ -104,7 +104,7 @@ function usage() {
 Options:
   --out=DIR              Write artifacts declared with .Out(path, value) into DIR
   --plugin=ID             Add a plugin to the selected set (repeatable)
-  --host-module=SPEC      Trust a host plugin package (path or package name) that exports registerRixPlugins
+  --ratmath[=PATH]        Load @ratmath/rix-bridge: the analytic, linalg, algebraic and graphics libraries
   --plugins=a,b           Replace preloads; full is the REPL default, none is bare
   --all-plugins           Preload every discovered plugin with an approved installer
   --all-built-plugins     Preload every plugin shipped in this RiX repository
@@ -547,18 +547,15 @@ function parseRunnerArgs(rawArgs) {
     let noConfig = false;
     let configDir = null;
     const operatorFiles = [];
-    const hostModules = [];
+    let ratmath = null;
     const positional = [];
     for (let index = 0; index < rawArgs.length; index += 1) {
         const arg = rawArgs[index];
-        if (arg === "--host-module") {
-            const spec = rawArgs[++index];
-            if (!spec) throw new Error("--host-module requires a module path or package name");
-            hostModules.push(spec);
-        } else if (arg.startsWith("--host-module=")) {
-            const spec = arg.slice("--host-module=".length);
-            if (!spec) throw new Error("--host-module requires a module path or package name");
-            hostModules.push(spec);
+        if (arg === "--ratmath") {
+            ratmath = true;
+        } else if (arg.startsWith("--ratmath=")) {
+            ratmath = arg.slice("--ratmath=".length);
+            if (!ratmath) throw new Error("--ratmath= requires a path to a rix-bridge checkout");
         } else if (arg === "--with-floats") {
             plugins.push("float");
             pluginsSpecified = true;
@@ -626,7 +623,7 @@ function parseRunnerArgs(rawArgs) {
         allBuiltPlugins,
         outDir,
         operatorFiles,
-        hostModules,
+        ratmath,
         preamble,
         noPreamble,
         noConfig,
@@ -1179,25 +1176,40 @@ async function runTests(filters, options = {}) {
 }
 
 /**
- * Trust a host plugin package named on the command line: a module that
- * exports registerRixPlugins(catalog), such as @ratmath/rix-bridge. Naming it
- * is the host's trust decision; nothing is imported otherwise.
+ * `--ratmath`: load @ratmath/rix-bridge, the host plugins for the ratmath
+ * JavaScript libraries (analytic, linalg, algebraic, graphics). RiX does not
+ * depend on them; the flag is the host's decision to trust and load that one
+ * package. It is found from the working directory, next to this RiX install,
+ * or at the path given as --ratmath=PATH. Returns the plugin ids to load.
  */
-async function registerHostModule(pluginCatalog, spec) {
-    let resolved;
-    if (spec.startsWith(".") || path.isAbsolute(spec)) resolved = path.resolve(spec);
+async function registerRatmathBridge(pluginCatalog, spec) {
+    const name = "@ratmath/rix-bridge";
+    let resolved = null;
+    if (typeof spec === "string") {
+        resolved = path.resolve(spec);
+        // A checkout folder: its package.json names the entry point (Node cannot import a folder).
+        if (existsSync(path.join(resolved, "package.json"))) {
+            const manifest = JSON.parse(readFileSync(path.join(resolved, "package.json"), "utf8"));
+            resolved = path.join(resolved, manifest.main || "index.js");
+        }
+    }
     else {
-        try {
-            resolved = createRequire(path.join(process.cwd(), "package.json")).resolve(spec);
-        } catch {
-            throw new Error(`--host-module: cannot find '${spec}' from ${process.cwd()}; install it there or pass a path`);
+        for (const base of [path.join(process.cwd(), "package.json"), fileURLToPath(import.meta.url)]) {
+            try {
+                resolved = createRequire(base).resolve(name);
+                break;
+            } catch {}
+        }
+        if (!resolved) {
+            throw new Error(`--ratmath: cannot find ${name}; install it with 'npm install github:ratmath/rix-bridge' or pass --ratmath=PATH`);
         }
     }
     const module = await import(pathToFileURL(resolved).href);
     if (typeof module.registerRixPlugins !== "function") {
-        throw new Error(`--host-module: '${spec}' does not export registerRixPlugins(catalog)`);
+        throw new Error(`--ratmath: '${resolved}' does not export registerRixPlugins(catalog)`);
     }
-    module.registerRixPlugins(pluginCatalog);
+    const ids = module.registerRixPlugins(pluginCatalog);
+    return Array.isArray(ids) ? ids.map(String) : [];
 }
 
 async function main() {
@@ -1216,7 +1228,7 @@ async function main() {
         allBuiltPlugins,
         outDir,
         operatorFiles,
-        hostModules,
+        ratmath,
         preamble,
         noPreamble,
         noConfig,
@@ -1236,7 +1248,11 @@ async function main() {
     ].filter(Boolean);
     const pluginCatalog = new NodePluginCatalog({ roots: [...new Set(pluginRoots)] }).scan();
     registerBuiltPluginInstallers(pluginCatalog);
-    for (const spec of hostModules) await registerHostModule(pluginCatalog, spec);
+    if (ratmath) {
+        const ids = await registerRatmathBridge(pluginCatalog, ratmath);
+        plugins.push(...ids);
+        pluginAdditions.push(...ids);
+    }
     const configDir = configDirOption ? path.resolve(configDirOption) : resolveRixConfigDir();
 
     if (args[0] === "setup") {

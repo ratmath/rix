@@ -21,10 +21,11 @@
   `CertifiedApproximation`, or a `.numerics.Refine` result), so regions can
   use pi or e; undecided comparisons give `?`.
 - Lint rule `RX1807` warns about a piecewise arm that earlier arms cover.
-- `rix --host-module=SPEC` trusts an outside host plugin package (a path or a
-  package name resolved from the working directory) that exports
-  `registerRixPlugins(catalog)`. This is how `@ratmath/rix-bridge` adds the
-  ratmath JavaScript libraries without RiX depending on them.
+- `rix --ratmath` loads `@ratmath/rix-bridge`, which adds the ratmath
+  JavaScript libraries as `.analytic`, `.matrix` (linalg), `.algebraic` and
+  `.graphics`. RiX does not depend on them: the bridge is found from the
+  working directory or next to the RiX install, or at `--ratmath=PATH`, and
+  is imported only when the flag is given.
 - Integer subtypes `Natural` (n >= 0), `Positive`, `Negative`, `Even` and
   `Odd`, and `.IntegerType(:Name, {= mod, residues, min, max })` for user
   subtypes; `.TypeRegister` also accepts `shape`, `next` and `prev`. Type
