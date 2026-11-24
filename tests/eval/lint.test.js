@@ -251,3 +251,31 @@ describe("RiX actionable runtime diagnostics", () => {
             .toThrow(/RX1201: '~=' preserves cell identity/);
     });
 });
+
+describe("RX1807 piecewise arms that can never be reached", () => {
+    const codes = (source) => lintRix(source).filter(({ code }) => code === "RX1807").map(({ message }) => message);
+
+    test("an arm inside earlier regions is flagged", () => {
+        expect(codes("F := {?: /x/ 0:x:1 ? 1; 1/2:x:!1 ? 2; 3 };")).toEqual([
+            "Arm 2 can never be reached: earlier arms (1) already cover its region, and the first arm that holds wins.",
+        ]);
+        expect(codes("F := {?: /x/ 0:x:!1 || 1:x:2 ? 1; 1/2:x:3/2 ? 2; 0 };")).toHaveLength(1);
+        expect(codes("F := {?: /x/ 0:x:2 && 1:x:3 ? 1; 1:x:2 ? 2 };")).toHaveLength(1);
+        expect(codes("F := {?: /x/ 1:x:0 ? 1; 0.25:x:0.5 ? 2 };")).toHaveLength(1);
+    });
+
+    test("a default after arms that cover the line is flagged", () => {
+        expect(codes("F := {?: /x/ _:x:0 ? 0; 0:x:_ ? x; 1 };")[0]).toContain("This default can never be reached");
+        expect(codes("F := {?: /x; n/ n:x:!n+1 ? x - n; 0 };")).toHaveLength(1);
+        expect(codes("F := {?: /x; n/ n:x:!n+1 ? x - n; 2:x:3 ? 5 };")).toHaveLength(1);
+    });
+
+    test("reachable or unknown arms are left alone", () => {
+        expect(codes("F := {?: /x/ _:x:!0 ? 0; 0:x:!1 ? x; 1 };")).toEqual([]);
+        expect(codes("F := {?: /x; n/ 2n:x:!2n+1 ? 1; -1 };")).toEqual([]);
+        expect(codes("F := {?: /x; n::Natural/ n:x:!n+1 ? 1; 0 };")).toEqual([]);
+        expect(codes("p := 3; F := {?: /x/ 0:x:p ? 1; 1:x:2 ? 2 };")).toEqual([]);
+        expect(codes("F := {?: /x, y/ 0:x:1 && 0:y:1 ? 1; 0:x:1 && 0:y:1 ? 2 };")).toEqual([]);
+        expect(codes("F := {?: /x/ 0:x:!1 ? 1; 1:!x:2 ? 2; 1:x:1 ? 9 };")).toEqual([]);
+    });
+});

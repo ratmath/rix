@@ -23,6 +23,8 @@ import { attachBuiltinProto } from "../../runtime/methods.js";
 import { buildIntegerConstraint, INTEGER_SEARCH_BUDGET } from "../../runtime/integer-types.js";
 import { resolveIntegerType, registerIntegerTypeFromRix, stringObj } from "../../runtime/type-system.js";
 import { irToText } from "../ir-to-text.js";
+import { derivative } from "./symbolic.js";
+import { chainInfo } from "../piecewise-regions.js";
 
 export const PIECE_BUDGET = 10000;
 
@@ -131,38 +133,6 @@ export function regionText(node) {
  * A chain on a header variable: { variable, lo, hi, loStrict, hiStrict,
  * loOpen, hiOpen } where lo/hi are IR (null for an unbounded end).
  */
-function chainInfo(node, variables) {
-    let points;
-    let strict;
-    let ends;
-    if (node?.fn === "INTERVAL" && node.args.length === 3) {
-        points = node.args;
-        strict = [false, false, false];
-        ends = [false, false, false];
-    } else if (node?.fn === "BETWEEN" && node.args.length === 4) {
-        const shape = String(node.args[0]?.args?.[0] ?? node.args[0]);
-        points = node.args.slice(1);
-        strict = [false];
-        ends = [];
-        for (const ch of shape) {
-            if (ch === "_" || ch === "v") ends.push(ch === "_");
-            else strict.push(ch === "!");
-        }
-    } else {
-        return null;
-    }
-    const middle = points[1];
-    if (middle?.fn !== "RETRIEVE" || !variables.includes(middle.args[0])) return null;
-    return {
-        node,
-        variable: middle.args[0],
-        lo: ends[0] ? null : points[0],
-        hi: ends[2] ? null : points[2],
-        loStrict: strict[1] === true,
-        hiStrict: strict[2] === true,
-        oneSided: ends[0] || ends[2],
-    };
-}
 
 // ---- construction -------------------------------------------------------------
 
@@ -308,12 +278,20 @@ function completeBindings(spec, rootValues, neededNeighbors) {
 
 const asIntegerBindings = (values) => new Map([...values].map(([name, n]) => [name, new Integer(n)]));
 
+/**
+ * A bound as an exact box [low, high]: a rational gives [q, q]; an interval,
+ * a certified approximation, or a .numerics.Refine record gives its
+ * enclosure. null means unbounded.
+ */
 function evaluateBound(node, bindings, context, evaluate) {
     if (node === null) return null;
     const value = withBindings(context, bindings, () => evaluate(node));
-    const q = toQ(value);
-    if (!q) throw new Error(`Piecewise bounds must be rational; ${regionText(node)} gave ${value?.toString?.() ?? String(value)}`);
-    return q;
+    const box = enclosure(value);
+    if (box) return box;
+    if (value?.type === "map" && value.entries?.get?.("valuekind")?.value === "numericsAlgorithmReal") {
+        throw new Error(`Piecewise bound ${regionText(node)} is a real without an enclosure; use .numerics.Refine(real, {= absoluteWidth=1/10^9 })[:approximation]`);
+    }
+    throw new Error(`Piecewise bounds must be rational or enclosures; ${regionText(node)} gave ${value?.toString?.() ?? String(value)}`);
 }
 
 /** Candidate values for `root` that might make `chain` hold for x in [xlo, xhi], ascending. */
@@ -329,6 +307,8 @@ function solveRoot(spec, alt, root, xlo, xhi, context, evaluate) {
         const bindings = asIntegerBindings(values);
         return [evaluateBound(chain.lo, bindings, context, evaluate), evaluateBound(chain.hi, bindings, context, evaluate)];
     };
+    // Each bound box has a low and a high edge; candidates use the edge that
+    // keeps every integer the true bound could admit (0 = low, 1 = high).
 
     // Affine path: per residue class of the root's shape, with period widened
     // by the moduli of shaped neighbors that depend on it.
@@ -350,16 +330,18 @@ function solveRoot(spec, alt, root, xlo, xhi, context, evaluate) {
             const j0 = jmin ?? (jmax !== null ? jmax - 2n : 0n);
             const samples = [j0, j0 + 1n, j0 + 2n].map((j) => boundsAt(k(j)));
             if (samples.some((s) => s === null)) { affine = false; break; }
-            const line = (which) => {
-                const [f0, f1, f2] = samples.map((s) => s[which]);
+            const line = (which, edge) => {
+                const [f0, f1, f2] = samples.map((s) => s[which]?.[edge] ?? null);
                 if (f0 === null) return null;
                 const d1 = f1.subtract(f0);
                 if (!f2.subtract(f1).equals(d1)) return undefined;
                 return { slope: d1, at: (j) => f0.add(d1.multiply(new Rational(j - j0, 1n))), base: f0.subtract(d1.multiply(new Rational(j0, 1n))) };
             };
-            const lo = line(0);
-            const hi = line(1);
-            if (lo === undefined || hi === undefined) { affine = false; break; }
+            const loLow = line(0, 0);
+            const loHigh = line(0, 1);
+            const hiLow = line(1, 0);
+            const hiHigh = line(1, 1);
+            if ([loLow, loHigh, hiLow, hiHigh].includes(undefined)) { affine = false; break; }
             // j where base + slope*j <= X (side = "below") or >= X ("above").
             const half = (lineInfo, x, side) => {
                 if (!lineInfo) return [null, null];
@@ -386,10 +368,10 @@ function solveRoot(spec, alt, root, xlo, xhi, context, evaluate) {
                 return [a, b];
             };
             // Ascending: lo <= x and x <= hi somewhere in [xlo, xhi].
-            const asc = clip([half(lo, xhi, "below"), half(hi, xlo, "above")]);
+            const asc = clip([half(loLow, xhi, "below"), half(hiHigh, xlo, "above")]);
             if (asc) ranges.push({ r, k, range: asc });
-            if (!chain.oneSided && lo && hi) {
-                const desc = clip([half(hi, xhi, "below"), half(lo, xlo, "above")]);
+            if (!chain.oneSided && loLow && hiLow) {
+                const desc = clip([half(hiLow, xhi, "below"), half(loHigh, xlo, "above")]);
                 if (desc) ranges.push({ r, k, range: desc });
             }
         }
@@ -415,7 +397,7 @@ function solveRoot(spec, alt, root, xlo, xhi, context, evaluate) {
     }
     const loAt = (k) => {
         const bounds = boundsAt(k);
-        return bounds === null ? null : bounds[0];
+        return bounds === null ? null : bounds[0][0];
     };
     const start = constraint.prev(floorQ(xhi)) ?? constraint.next(floorQ(xhi));
     if (start === null) return [];
@@ -468,7 +450,7 @@ function solveRoot(spec, alt, root, xlo, xhi, context, evaluate) {
         tick();
         const bounds = boundsAt(k);
         if (bounds !== null) {
-            if (bounds[1] !== null && cmp(bounds[1], xlo) < 0) break;
+            if (bounds[1] !== null && cmp(bounds[1][1], xlo) < 0) break;
             found.push(k);
         }
         if (found.length > PIECE_BUDGET) throw new Error(`More than ${PIECE_BUDGET} values of ${root} fit ${regionText(chain.node)} here; narrow the input`);
@@ -478,8 +460,12 @@ function solveRoot(spec, alt, root, xlo, xhi, context, evaluate) {
 }
 
 function enclosure(value) {
-    if (value instanceof RationalInterval) return [value.low, value.high];
+    if (value instanceof RationalInterval) return cmp(value.low, value.high) <= 0 ? [value.low, value.high] : [value.high, value.low];
     if (value instanceof CertifiedApproximation) return [value.enclosure.low, value.enclosure.high];
+    if (value?.type === "map" && value.entries instanceof Map) {
+        const inner = value.entries.get("approximation") ?? value.entries.get("interval");
+        return inner ? enclosure(inner) : null;
+    }
     const q = toQ(value);
     return q ? [q, q] : null;
 }
@@ -495,9 +481,10 @@ function chainState(chain, context, evaluate) {
     // le(p, q, strict): p <= q, or p < q for a strict link; null means unbounded.
     const le = (p, q, strict) => (p === null || q === null ? true : strict ? cmp(p, q) < 0 : cmp(p, q) <= 0);
     const holds = (first, firstStrict, second, secondStrict) => {
-        // first ⋈ x ⋈ second for every x in [a, b], for none, or for some.
-        const all = le(first, a, firstStrict) && le(b, second, secondStrict);
-        const none = (first !== null && !le(first, b, firstStrict)) || (second !== null && !le(a, second, secondStrict));
+        // first ⋈ x ⋈ second for every x in [a, b] and every bound value in
+        // the bound boxes, for none, or for some.
+        const all = le(first?.[1] ?? null, a, firstStrict) && le(b, second?.[0] ?? null, secondStrict);
+        const none = (first !== null && !le(first[0], b, firstStrict)) || (second !== null && !le(a, second[1], secondStrict));
         return all ? "truth" : none ? "false" : "undecided";
     };
     const up = holds(lo, chain.loStrict, hi, chain.hiStrict);
@@ -565,20 +552,116 @@ function locate(spec, context, evaluate) {
 }
 
 function evaluatePoint(spec, context, evaluate) {
+    if (spec.derivativeOf) return derivativePoint(spec, context, evaluate);
     const found = locate(spec, context, evaluate);
     if (found === null) return null;
     if (found.undecided) return UNDECIDED;
     return withBindings(context, found.bindings, () => evaluate(found.arm.rule));
 }
 
+// ---- derivatives -------------------------------------------------------------------
+
+/**
+ * The derivative spec of a one-variable spec: same regions, each rule
+ * differentiated. At a breakpoint the value comes from derivativePoint.
+ */
+function derivativeSpec(spec, variable) {
+    if (spec.variables.length !== 1) throw new Error("F' supports one-variable piecewise functions for now");
+    for (const arm of spec.arms) {
+        if (arm.isDefault) continue;
+        for (const alt of arm.alternatives) {
+            for (const { node, chain } of alt.conjuncts) {
+                if (!chain && namesIn(node).has(variable)) {
+                    throw new Error(`F' needs region arms; ${regionText(node)} tests ${variable} directly, so its breakpoints are unknown`);
+                }
+            }
+        }
+    }
+    const arms = spec.arms.map((arm) => {
+        let rule;
+        try {
+            rule = derivative(arm.rule, variable);
+        } catch (error) {
+            throw new Error(`F': cannot differentiate the rule ${arm.ruleText}: ${error.message}`);
+        }
+        return { ...arm, rule, ruleText: regionText(rule) };
+    });
+    const header = [...spec.integers.values()].map((info) => {
+        const neighbor = info.neighbor ? ` ${info.neighbor.relation} ${info.neighbor.of}` : "";
+        return `${info.name}${info.typeText}${neighbor}`;
+    });
+    const body = arms.map((arm) => (arm.isDefault ? arm.ruleText : `${arm.regionText} ? ${arm.ruleText}`)).join("; ");
+    const source = `{?: /${spec.variables.join(", ")}${header.length ? `; ${header.join(", ")}` : ""}/ ${body} }`;
+    return { ...spec, arms, derivativeOf: spec, name: null, source };
+}
+
+const ruleAt = (arm, bindings, context, evaluate) => {
+    try {
+        return withBindings(context, bindings, () => evaluate(arm.rule));
+    } catch {
+        return null;
+    }
+};
+
+/**
+ * A derivative at a point. Away from breakpoints it is the differentiated
+ * rule. At a breakpoint b it exists only when the function below is defined
+ * at b, both neighboring rules of that function meet its value there, and the
+ * two differentiated rules agree; otherwise `_`.
+ */
+function derivativePoint(spec, context, evaluate) {
+    const variable = spec.variables[0];
+    const box = enclosure(evaluate({ fn: "RETRIEVE", args: [variable] }));
+    if (!box) throw new Error(`Piecewise needs a rational, interval, or certified value for ${variable}`);
+    const [lo, hi] = box;
+    const cuts = breakpoints(spec, variable, lo, hi, context, evaluate);
+    if (cuts.length === 0) {
+        const found = locate(spec, context, evaluate);
+        if (found === null) return null;
+        if (found.undecided) return UNDECIDED;
+        return withBindings(context, found.bindings, () => evaluate(found.arm.rule));
+    }
+    if (!lo.equals(hi)) return UNDECIDED;
+    const b = lo;
+    const ONE = new Rational(1n, 1n);
+    const near = breakpoints(spec, variable, b.subtract(ONE), b.add(ONE), context, evaluate);
+    const below = near.filter((q) => cmp(q, b) < 0).at(-1) ?? b.subtract(ONE);
+    const above = near.find((q) => cmp(q, b) > 0) ?? b.add(ONE);
+    const side = (q) => withBindings(context, new Map([[variable, q.add(b).divide(TWO)]]), () => locate(spec, context, evaluate));
+    const left = side(below);
+    const right = side(above);
+    if (left === null || right === null) return null;
+    if (left.undecided || right.undecided) return UNDECIDED;
+    const source = spec.derivativeOf;
+    const value = toQ(evaluatePoint(source, context, evaluate));
+    if (value === null) return null;
+    const same = (a, c) => a !== null && c !== null && cmp(a, c) === 0;
+    const sourceLeft = toQ(ruleAt(source.arms[left.arm.index], left.bindings, context, evaluate));
+    const sourceRight = toQ(ruleAt(source.arms[right.arm.index], right.bindings, context, evaluate));
+    if (!same(sourceLeft, value) || !same(sourceRight, value)) return null;
+    const slopeLeft = toQ(ruleAt(spec.arms[left.arm.index], left.bindings, context, evaluate));
+    const slopeRight = toQ(ruleAt(spec.arms[right.arm.index], right.bindings, context, evaluate));
+    return same(slopeLeft, slopeRight) ? fromQ(slopeLeft) : null;
+}
+
 /** Every finite region endpoint in [a, b] for `variable`, sorted, as Rationals. */
 function breakpoints(spec, variable, a, b, context, evaluate) {
     const points = new Map();
-    const add = (q) => {
-        if (q === null) return;
+    const uncertain = new Map();
+    const put = (q) => {
         if (cmp(q, a) < 0 || cmp(q, b) > 0) return;
         points.set(q.toString(), q);
         if (points.size > PIECE_BUDGET) throw new Error(`More than ${PIECE_BUDGET} breakpoints in ${a}:${b}; narrow the interval`);
+    };
+    // An enclosure bound contributes both edges, and is remembered as uncertain.
+    const add = (box) => {
+        if (box === null) return;
+        const [p, q] = box;
+        if (p.equals(q)) return put(p);
+        if (cmp(q, a) < 0 || cmp(p, b) > 0) return;
+        uncertain.set(`${p}:${q}`, [p, q]);
+        put(p);
+        put(q);
     };
     for (const arm of spec.arms) {
         if (arm.isDefault) continue;
@@ -612,7 +695,9 @@ function breakpoints(spec, variable, a, b, context, evaluate) {
             }
         }
     }
-    return [...points.values()].sort(cmp);
+    const sorted = [...points.values()].sort(cmp);
+    sorted.uncertain = [...uncertain.values()];
+    return sorted;
 }
 
 function hullOf(values) {
@@ -689,29 +774,42 @@ function asInterval(value, who) {
     throw new Error(`${who} expects an interval such as 0:10`);
 }
 
+function piecewiseValue(spec, closureScopes) {
+    const value = {
+        type: "lambda",
+        params: {
+            positional: spec.variables.map((name) => ({ name, holeDefault: null })),
+            keyword: [],
+            conditionals: [],
+            prep: [],
+            prepStrict: false,
+            prepUndecided: "stop",
+            metadata: {},
+        },
+        body: { fn: "PIECEWISE_EVAL", args: [spec] },
+        __closureScopes: closureScopes,
+        ...(spec.name ? { __name: spec.name } : {}),
+    };
+    Object.defineProperty(value, "__piecewise", { value: spec, enumerable: false, configurable: true });
+    Object.defineProperty(value, "__derive", {
+        value: (variable) => {
+            const name = variable ?? spec.variables[0];
+            if (!spec.variables.includes(name)) throw new Error(`F': ${name} is not a variable of this piecewise function`);
+            return piecewiseValue(derivativeSpec(spec, name), closureScopes);
+        },
+        enumerable: false,
+        configurable: true,
+    });
+    return value;
+}
+
 export const piecewiseFunctions = {
     PIECEWISE: {
         lazy: true,
         impl(args, context, evaluate) {
             const meta = args[0];
             const spec = buildSpec(meta, args.slice(1), context, evaluate);
-            const value = {
-                type: "lambda",
-                params: {
-                    positional: spec.variables.map((name) => ({ name, holeDefault: null })),
-                    keyword: [],
-                    conditionals: [],
-                    prep: [],
-                    prepStrict: false,
-                    prepUndecided: "stop",
-                    metadata: {},
-                },
-                body: { fn: "PIECEWISE_EVAL", args: [spec] },
-                __closureScopes: context.captureClosureScopes(),
-                ...(spec.name ? { __name: spec.name } : {}),
-            };
-            Object.defineProperty(value, "__piecewise", { value: spec, enumerable: false, configurable: true });
-            return value;
+            return piecewiseValue(spec, context.captureClosureScopes());
         },
         doc: "Build a piecewise function from {?: /variables; integers/ region ? rule; ...; default }",
     },
@@ -767,7 +865,13 @@ export const piecewiseFunctions = {
                 }
                 context.push(new Map([[variable, fromQ(range.low)]]));
                 pushed++;
-                return seq(breakpoints(spec, variable, range.low, range.high, context, evaluate).map(fromQ));
+                const points = breakpoints(spec, variable, range.low, range.high, context, evaluate);
+                const inside = (q) => points.uncertain.some(([p, r]) => cmp(p, q) <= 0 && cmp(q, r) <= 0);
+                const items = [
+                    ...points.filter((q) => !inside(q)).map((q) => [q, fromQ(q)]),
+                    ...points.uncertain.map(([p, r]) => [p, new RationalInterval(p, r)]),
+                ].sort((x, y) => cmp(x[0], y[0]));
+                return seq(items.map(([, value]) => value));
             } finally {
                 for (let i = 0; i < pushed; i++) context.pop();
             }

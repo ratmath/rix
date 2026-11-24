@@ -46,7 +46,7 @@ For a project or an embedded application:
 npm install @ratmath/rix
 ```
 
-Or use `bun add @ratmath/rix`. Core (`@ratmath/core` ^0.8.0) and other required
+Or use `bun add @ratmath/rix`. Core (`@ratmath/core` ^0.9.0) and other required
 JavaScript dependencies are installed automatically. Bundled RiX plugins ship
 with this package; they do not require separate npm installs.
 
@@ -104,6 +104,7 @@ selection; repeatable `--plugin` flags add to the selected set:
 | `rix --plugins=full` | The curated standard set: exact algebras, algebra, drawing, plotting, Scene3D, ND, geometry, graphs, combinatorics, data, documents, Float, and renderers. |
 | `rix --all-built-plugins` | Every discovered plugin shipped in the package, including its example plugins. This is broader than `full`. |
 | `rix --all-plugins` | Every discovered plugin, including project-local plugins; host plugins still need an approved installer. |
+| `rix --ratmath program.rix` | Loads [`@ratmath/rix-bridge`](https://github.com/ratmath/rix-bridge), which adds `.analytic`, `.matrix`, `.algebraic` and `.graphics` from the ratmath JavaScript libraries. RiX does not depend on them; install the bridge next to your programs (or pass `--ratmath=PATH`). |
 
 Append a filename to run a program with the same selection, for example
 `rix --plugins=plot,svg example.rix`. Repeat `--plugin=ID` to select several

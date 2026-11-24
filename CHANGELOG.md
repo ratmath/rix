@@ -12,8 +12,20 @@
   `_`, interval input gives the hull, and a certified value straddling a
   breakpoint gives `?`. `.Breaks(F, a:b)` and `.Pieces(F)` inspect the
   regions. Several variables (`/x, y; n, m/`) evaluate at points;
-  multivariable breakpoints, piecewise derivatives, and an analytic export are
-  not implemented yet. See `documentation/eval/piecewise.md`.
+  multivariable breakpoints, integration, and an analytic export are not
+  implemented yet. See `documentation/eval/piecewise.md`.
+- `F'` on a one-variable piecewise function differentiates each rule on its
+  region; at a breakpoint it is `_` unless value and slope match from both
+  sides. Symbolic `Deriv` also handles a constant exponent such as `x^n`.
+- Piecewise bounds may be enclosures (`RationalInterval`,
+  `CertifiedApproximation`, or a `.numerics.Refine` result), so regions can
+  use pi or e; undecided comparisons give `?`.
+- Lint rule `RX1807` warns about a piecewise arm that earlier arms cover.
+- `rix --ratmath` loads `@ratmath/rix-bridge`, which adds the ratmath
+  JavaScript libraries as `.analytic`, `.matrix` (linalg), `.algebraic` and
+  `.graphics`. RiX does not depend on them: the bridge is found from the
+  working directory or next to the RiX install, or at `--ratmath=PATH`, and
+  is imported only when the flag is given.
 - Integer subtypes `Natural` (n >= 0), `Positive`, `Negative`, `Even` and
   `Odd`, and `.IntegerType(:Name, {= mod, residues, min, max })` for user
   subtypes; `.TypeRegister` also accepts `shape`, `next` and `prev`. Type
@@ -29,6 +41,8 @@
 
 ### Changed
 
+- `@ratmath/core` is now `^0.9.0`, so RiX and the ratmath libraries can share
+  one Core instance.
 - `a:!b` used to read as `a:(NOT b)`, which always gave `_`; it is now a
   strict link. `_` touching a colon is now an unbounded end rather than a
   null endpoint; a variable holding `_` is still null.

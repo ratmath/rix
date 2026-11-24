@@ -38541,6 +38541,9 @@ symbolicNamespace._proto = {=
     get digitOffset() {
       return this.#digitOffset;
     }
+    get isPositional() {
+      return true;
+    }
     get supportsPositionalFractions() {
       return this.#radix === this.#base && this.#digitOffset === 0;
     }
@@ -38721,7 +38724,7 @@ symbolicNamespace._proto = {=
       return `${this.#name} (${charPreview})`;
     }
     equals(other) {
-      if (!(other instanceof BaseSystem)) {
+      if (!(other instanceof BaseSystem) || other.isPositional !== this.isPositional) {
         return false;
       }
       if (this.#base !== other.#base || this.#radix !== other.#radix || this.#digitOffset !== other.#digitOffset) {
@@ -38882,7 +38885,90 @@ symbolicNamespace._proto = {=
   BaseSystem.BASE62 = new BaseSystem("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""), "Base 62");
   BaseSystem.BASE64 = new BaseSystem("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@&".split(""), "Base 64");
   BaseSystem.BASE60 = new BaseSystem("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWX".split(""), "Base 60 (Mesopotamia)");
-  BaseSystem.ROMAN = new BaseSystem(["I", "V", "X", "L", "C", "D", "M"], "Roman Numerals");
+  var ROMAN_VALUES = [
+    [1000n, "M"],
+    [900n, "CM"],
+    [500n, "D"],
+    [400n, "CD"],
+    [100n, "C"],
+    [90n, "XC"],
+    [50n, "L"],
+    [40n, "XL"],
+    [10n, "X"],
+    [9n, "IX"],
+    [5n, "V"],
+    [4n, "IV"],
+    [1n, "I"]
+  ];
+
+  class RomanNumerals extends BaseSystem {
+    constructor() {
+      super(["I", "V", "X", "L", "C", "D", "M"], "Roman Numerals");
+    }
+    get isPositional() {
+      return false;
+    }
+    get supportsPositionalFractions() {
+      return false;
+    }
+    toDecimal(str) {
+      if (typeof str !== "string" || str.length === 0) {
+        throw new Error("Input must be a non-empty string");
+      }
+      const negative = str.startsWith("-");
+      const body = (negative ? str.slice(1) : str).toUpperCase();
+      if (!/^[IVXLCDM]+$/.test(body))
+        throw new Error(`Invalid Roman numeral '${str}'`);
+      let value = 0n;
+      let rest = body;
+      for (const [amount, symbol] of ROMAN_VALUES) {
+        while (rest.startsWith(symbol)) {
+          value += amount;
+          rest = rest.slice(symbol.length);
+        }
+      }
+      if (rest.length || value > 3999n || this.fromDecimal(value) !== body) {
+        throw new Error(`'${str}' is not a standard Roman numeral (1 to 3999)`);
+      }
+      return negative ? -value : value;
+    }
+    fromDecimal(value) {
+      if (typeof value !== "bigint")
+        throw new Error("Value must be a BigInt");
+      if (value < 0n)
+        return `-${this.fromDecimal(-value)}`;
+      if (value === 0n)
+        throw new Error("Roman numerals have no zero");
+      if (value > 3999n)
+        throw new RangeError("Roman numerals here run from 1 to 3999");
+      let out = "";
+      for (const [amount, symbol] of ROMAN_VALUES) {
+        while (value >= amount) {
+          out += symbol;
+          value -= amount;
+        }
+      }
+      return out;
+    }
+    isValidString(str) {
+      try {
+        this.toDecimal(str);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    withCaseSensitivity() {
+      return this;
+    }
+    equals(other) {
+      return other instanceof RomanNumerals;
+    }
+    toJSON() {
+      return { $ratmath: "BaseSystem", kind: "roman", name: "Roman Numerals" };
+    }
+  }
+  BaseSystem.ROMAN = new RomanNumerals;
   BaseSystem.registerPrefix("b", BaseSystem.BINARY);
   BaseSystem.registerPrefix("t", BaseSystem.TERNARY);
   BaseSystem.registerPrefix("q", BaseSystem.QUATERNARY);
@@ -38985,11 +39071,15 @@ symbolicNamespace._proto = {=
   }
   function parseRationalParts(input) {
     let value = inputString(input, "rational");
-    if (value.startsWith("~")) {
-      value = value.slice(1);
-    }
-    const continued = value.match(new RegExp(`^([+-]?${DIGITS})\\.~(${DIGITS}(?:~${DIGITS})*)$`));
+    const explicit = value.startsWith("~");
+    const cfText = explicit ? value.slice(1) : value;
+    const continued = cfText.match(new RegExp(`^([+-]?${DIGITS})\\.~(${DIGITS}(?:~${DIGITS})*)$`));
     if (continued) {
+      const signText = continued[1][0];
+      if (!explicit && (signText === "-" || signText === "+")) {
+        const [n, d] = parseRationalParts(continued[0].slice(1));
+        return [signText === "-" ? -n : n, d];
+      }
       const first = BigInt(cleanDigits(continued[1], { signed: true }));
       const tail = continued[2].split("~").map((term) => BigInt(cleanDigits(term)));
       if (tail.length === 1 && tail[0] === 0n) {
@@ -38997,6 +39087,8 @@ symbolicNamespace._proto = {=
       }
       return continuedFractionParts([first, ...tail]);
     }
+    if (explicit)
+      throw new Error(`Invalid continued fraction: ${input}`);
     const mixed = value.match(new RegExp(`^([+-]?)(${DIGITS})\\.\\.(${DIGITS})\\/(${DIGITS})$`));
     if (mixed) {
       const sign = mixed[1] === "-" ? -1n : 1n;
@@ -39026,6 +39118,17 @@ symbolicNamespace._proto = {=
       return [BigInt(cleanDigits(value, { signed: true })), 1n];
     }
     throw new Error(`Invalid rational number: ${input}`);
+  }
+  function negateContinuedFraction(terms) {
+    const [a0, a1, ...rest] = terms;
+    if (a1 === undefined)
+      return [-a0];
+    if (a1 > 1n)
+      return [-a0 - 1n, 1n, a1 - 1n, ...rest];
+    if (rest.length === 0)
+      return [-a0 - 1n];
+    const [a2, ...more] = rest;
+    return [-a0 - 1n, a2 + 1n, ...more];
   }
   function continuedFractionParts(terms) {
     for (const term of terms.slice(1)) {
@@ -40155,7 +40258,11 @@ symbolicNamespace._proto = {=
       if (typeof cfString !== "string") {
         throw new TypeError("Continued fraction must be a string");
       }
-      const cfMatch = cfString.match(/^(-?\d+)\.~(.*)$/);
+      if (/^[-+]\d/.test(cfString) && cfString.includes(".~")) {
+        const terms = Rational.#continuedFractionString(cfString.slice(1));
+        return cfString[0] === "-" ? negateContinuedFraction(terms) : terms;
+      }
+      const cfMatch = cfString.match(/^~?(-?\d+)\.~(.*)$/);
       if (!cfMatch) {
         throw new Error("Invalid continued fraction format");
       }
@@ -40309,7 +40416,8 @@ symbolicNamespace._proto = {=
       const intPart = cf[0];
       const cfTerms = cf.slice(1);
       const suffix = complete ? "" : "~...";
-      return `${intPart}.~${cfTerms.join("~")}${suffix}`;
+      const sign = intPart < 0n ? "~" : "";
+      return `${sign}${intPart}.~${cfTerms.join("~")}${suffix}`;
     }
     static fromContinuedFractionString(cfString) {
       return Rational.fromContinuedFraction(Rational.#continuedFractionString(cfString));
@@ -43052,7 +43160,8 @@ symbolicNamespace._proto = {=
     if (extended.length <= maxTerms)
       return exactScalar(rational);
     const [first, ...tail] = coefficients;
-    const original = tail.length ? `${first}.~${tail.join("~")}?` : `${first}.~?`;
+    const sign = first < 0n ? "~" : "";
+    const original = tail.length ? `${sign}${first}.~${tail.join("~")}?` : `${sign}${first}.~?`;
     return certifiedContinuedFractionPrefix({
       coefficients,
       original,
@@ -43328,7 +43437,10 @@ symbolicNamespace._proto = {=
         fail("invalid radix shift");
       source = shifts[0];
       let result;
-      if (source.includes(".~")) {
+      if (source.includes(".~") && source.startsWith("-")) {
+        result = this.parse(source.slice(1) + (shifts.length === 2 ? `_^${shifts[1]}` : "")).negate();
+        return exact(result);
+      } else if (source.includes(".~")) {
         const parts = source.replace(/^~/, "").replace(".~", "~").split("~");
         if (parts.length < 2 || parts.length > 256)
           fail("continued-fraction term budget exceeded");
@@ -43631,12 +43743,16 @@ symbolicNamespace._proto = {=
       });
     }
     const explicitCf = value.startsWith("~");
+    if (!explicitCf && /^[-+]\d(?:_?\d)*\.~/.test(value)) {
+      const positive = parseApproximation(value.slice(1));
+      return value[0] === "-" ? positive.negate() : positive;
+    }
     const cfValue = explicitCf ? value.slice(1) : value;
-    const cf = cfValue.match(new RegExp(`^([+-]?${DIGITS})\\.~(${DIGITS}(?:~${DIGITS})*)\\?(${DIGITS}(?:~${DIGITS})*)?$`));
+    const cf = cfValue.match(new RegExp(`^([+-]?${DIGITS})\\.~((?:${DIGITS}(?:~${DIGITS})*)?)\\?(${DIGITS}(?:~${DIGITS})*)?$`));
     if (cf) {
       const certified = [
         BigInt(cleanDigits(cf[1], { signed: true })),
-        ...cf[2].split("~").map((term) => BigInt(cleanDigits(term)))
+        ...cf[2] ? cf[2].split("~").map((term) => BigInt(cleanDigits(term))) : []
       ];
       const provisional = cf[3] ? cf[3].split("~").map((term) => BigInt(cleanDigits(term))) : [];
       return certifiedContinuedFractionPrefix({
@@ -65547,7 +65663,12 @@ ${indentStr})`;
       return binary("DIV", numerator, binary("POW", cloneIr(right), literal(2)));
     }
     if (node.fn === "POW") {
+      if (independentOf(node, variable))
+        return literal(0);
       const exponent = rationalFromIr(right);
+      if (!exponent && independentOf(right, variable)) {
+        return binary("MUL", binary("MUL", cloneIr(right), binary("POW", cloneIr(left), ir("SUB", cloneIr(right), literal(1)))), derivative(left, variable));
+      }
       if (!exponent || exponent.denominator !== 1n)
         throw new Error("Deriv supports only exact integer literal powers");
       return binary("MUL", binary("MUL", literal(exponent.numerator), binary("POW", cloneIr(left), literal(exponent.numerator - 1n))), derivative(left, variable));
@@ -66390,8 +66511,9 @@ ${indentStr})`;
       impl: ([value, order = 1, variable = null]) => {
         let result = value;
         const count = order instanceof Integer ? Number(order.value) : Number(order || 1);
-        for (let index = 0;index < count; index++)
-          result = calculus(result, variable, "Deriv");
+        for (let index = 0;index < count; index++) {
+          result = typeof result?.__derive === "function" ? result.__derive(variable?.value ?? variable) : calculus(result, variable, "Deriv");
+        }
         return result;
       },
       pure: true,
@@ -66401,6 +66523,8 @@ ${indentStr})`;
       impl: ([value, order = 1, variable = null]) => {
         let result = value;
         const count = order instanceof Integer ? Number(order.value) : Number(order || 1);
+        if (typeof result?.__derive === "function")
+          throw new Error("Integrals of piecewise functions are not implemented yet");
         for (let index = 0;index < count; index++)
           result = calculus(result, variable, "Integrate");
         return result;
@@ -91273,6 +91397,44 @@ ${indented.join(`,
     }
   };
 
+  // src/eval/piecewise-regions.js
+  function chainInfo(node, variables) {
+    let points;
+    let strict;
+    let ends;
+    if (node?.fn === "INTERVAL" && node.args.length === 3) {
+      points = node.args;
+      strict = [false, false, false];
+      ends = [false, false, false];
+    } else if (node?.fn === "BETWEEN" && node.args.length === 4) {
+      const shape = String(node.args[0]?.args?.[0] ?? node.args[0]);
+      points = node.args.slice(1);
+      strict = [false];
+      ends = [];
+      for (const ch of shape) {
+        if (ch === "_" || ch === "v")
+          ends.push(ch === "_");
+        else
+          strict.push(ch === "!");
+      }
+    } else {
+      return null;
+    }
+    const middle = points[1];
+    if (middle?.fn !== "RETRIEVE" || !variables.includes(middle.args[0]))
+      return null;
+    return {
+      node,
+      variable: middle.args[0],
+      lo: ends[0] ? null : points[0],
+      hi: ends[2] ? null : points[2],
+      loStrict: strict[1] === true,
+      hiStrict: strict[2] === true,
+      oneSided: ends[0] || ends[2]
+    };
+  }
+  var ALL = Object.freeze({ lo: null, loClosed: false, hi: null, hiClosed: false });
+
   // src/eval/functions/piecewise.js
   var PIECE_BUDGET = 1e4;
   var ZERO3 = new Rational(0n, 1n);
@@ -91383,41 +91545,6 @@ ${indented.join(`,
       }
     };
     return print(node);
-  }
-  function chainInfo(node, variables) {
-    let points;
-    let strict;
-    let ends;
-    if (node?.fn === "INTERVAL" && node.args.length === 3) {
-      points = node.args;
-      strict = [false, false, false];
-      ends = [false, false, false];
-    } else if (node?.fn === "BETWEEN" && node.args.length === 4) {
-      const shape = String(node.args[0]?.args?.[0] ?? node.args[0]);
-      points = node.args.slice(1);
-      strict = [false];
-      ends = [];
-      for (const ch of shape) {
-        if (ch === "_" || ch === "v")
-          ends.push(ch === "_");
-        else
-          strict.push(ch === "!");
-      }
-    } else {
-      return null;
-    }
-    const middle = points[1];
-    if (middle?.fn !== "RETRIEVE" || !variables.includes(middle.args[0]))
-      return null;
-    return {
-      node,
-      variable: middle.args[0],
-      lo: ends[0] ? null : points[0],
-      hi: ends[2] ? null : points[2],
-      loStrict: strict[1] === true,
-      hiStrict: strict[2] === true,
-      oneSided: ends[0] || ends[2]
-    };
   }
   function buildSpec(meta, armNodes, context, evaluate) {
     const variables = meta.variables;
@@ -91566,10 +91693,13 @@ ${indented.join(`,
     if (node === null)
       return null;
     const value = withBindings(context, bindings, () => evaluate(node));
-    const q = toQ(value);
-    if (!q)
-      throw new Error(`Piecewise bounds must be rational; ${regionText(node)} gave ${value?.toString?.() ?? String(value)}`);
-    return q;
+    const box = enclosure(value);
+    if (box)
+      return box;
+    if (value?.type === "map" && value.entries?.get?.("valuekind")?.value === "numericsAlgorithmReal") {
+      throw new Error(`Piecewise bound ${regionText(node)} is a real without an enclosure; use .numerics.Refine(real, {= absoluteWidth=1/10^9 })[:approximation]`);
+    }
+    throw new Error(`Piecewise bounds must be rational or enclosures; ${regionText(node)} gave ${value?.toString?.() ?? String(value)}`);
   }
   function solveRoot(spec, alt, root, xlo, xhi, context, evaluate) {
     const chain = alt.pins.get(root);
@@ -91608,8 +91738,8 @@ ${indented.join(`,
           affine = false;
           break;
         }
-        const line = (which) => {
-          const [f0, f1, f2] = samples.map((s) => s[which]);
+        const line = (which, edge) => {
+          const [f0, f1, f2] = samples.map((s) => s[which]?.[edge] ?? null);
           if (f0 === null)
             return null;
           const d1 = f1.subtract(f0);
@@ -91617,9 +91747,11 @@ ${indented.join(`,
             return;
           return { slope: d1, at: (j) => f0.add(d1.multiply(new Rational(j - j0, 1n))), base: f0.subtract(d1.multiply(new Rational(j0, 1n))) };
         };
-        const lo = line(0);
-        const hi = line(1);
-        if (lo === undefined || hi === undefined) {
+        const loLow = line(0, 0);
+        const loHigh = line(0, 1);
+        const hiLow = line(1, 0);
+        const hiHigh = line(1, 1);
+        if ([loLow, loHigh, hiLow, hiHigh].includes(undefined)) {
           affine = false;
           break;
         }
@@ -91653,11 +91785,11 @@ ${indented.join(`,
             return null;
           return [a, b];
         };
-        const asc = clip([half(lo, xhi, "below"), half(hi, xlo, "above")]);
+        const asc = clip([half(loLow, xhi, "below"), half(hiHigh, xlo, "above")]);
         if (asc)
           ranges.push({ r, k, range: asc });
-        if (!chain.oneSided && lo && hi) {
-          const desc = clip([half(hi, xhi, "below"), half(lo, xlo, "above")]);
+        if (!chain.oneSided && loLow && hiLow) {
+          const desc = clip([half(hiLow, xhi, "below"), half(loHigh, xlo, "above")]);
           if (desc)
             ranges.push({ r, k, range: desc });
         }
@@ -91683,7 +91815,7 @@ ${indented.join(`,
     }
     const loAt = (k) => {
       const bounds = boundsAt(k);
-      return bounds === null ? null : bounds[0];
+      return bounds === null ? null : bounds[0][0];
     };
     const start = constraint.prev(floorQ(xhi)) ?? constraint.next(floorQ(xhi));
     if (start === null)
@@ -91751,7 +91883,7 @@ ${indented.join(`,
       tick();
       const bounds = boundsAt(k);
       if (bounds !== null) {
-        if (bounds[1] !== null && cmp(bounds[1], xlo) < 0)
+        if (bounds[1] !== null && cmp(bounds[1][1], xlo) < 0)
           break;
         found.push(k);
       }
@@ -91763,9 +91895,13 @@ ${indented.join(`,
   }
   function enclosure(value) {
     if (value instanceof RationalInterval)
-      return [value.low, value.high];
+      return cmp(value.low, value.high) <= 0 ? [value.low, value.high] : [value.high, value.low];
     if (value instanceof CertifiedApproximation)
       return [value.enclosure.low, value.enclosure.high];
+    if (value?.type === "map" && value.entries instanceof Map) {
+      const inner = value.entries.get("approximation") ?? value.entries.get("interval");
+      return inner ? enclosure(inner) : null;
+    }
     const q = toQ(value);
     return q ? [q, q] : null;
   }
@@ -91779,8 +91915,8 @@ ${indented.join(`,
     const hi = evaluateBound(chain.hi, null, context, evaluate);
     const le = (p, q, strict) => p === null || q === null ? true : strict ? cmp(p, q) < 0 : cmp(p, q) <= 0;
     const holds = (first, firstStrict, second, secondStrict) => {
-      const all = le(first, a, firstStrict) && le(b, second, secondStrict);
-      const none = first !== null && !le(first, b, firstStrict) || second !== null && !le(a, second, secondStrict);
+      const all = le(first?.[1] ?? null, a, firstStrict) && le(b, second?.[0] ?? null, secondStrict);
+      const none = first !== null && !le(first[0], b, firstStrict) || second !== null && !le(a, second[1], secondStrict);
       return all ? "truth" : none ? "false" : "undecided";
     };
     const up = holds(lo, chain.loStrict, hi, chain.hiStrict);
@@ -91855,6 +91991,8 @@ ${indented.join(`,
     return null;
   }
   function evaluatePoint(spec, context, evaluate) {
+    if (spec.derivativeOf)
+      return derivativePoint(spec, context, evaluate);
     const found = locate(spec, context, evaluate);
     if (found === null)
       return null;
@@ -91862,16 +92000,107 @@ ${indented.join(`,
       return UNDECIDED;
     return withBindings(context, found.bindings, () => evaluate(found.arm.rule));
   }
+  function derivativeSpec(spec, variable) {
+    if (spec.variables.length !== 1)
+      throw new Error("F' supports one-variable piecewise functions for now");
+    for (const arm of spec.arms) {
+      if (arm.isDefault)
+        continue;
+      for (const alt of arm.alternatives) {
+        for (const { node, chain } of alt.conjuncts) {
+          if (!chain && namesIn(node).has(variable)) {
+            throw new Error(`F' needs region arms; ${regionText(node)} tests ${variable} directly, so its breakpoints are unknown`);
+          }
+        }
+      }
+    }
+    const arms = spec.arms.map((arm) => {
+      let rule;
+      try {
+        rule = derivative(arm.rule, variable);
+      } catch (error) {
+        throw new Error(`F': cannot differentiate the rule ${arm.ruleText}: ${error.message}`);
+      }
+      return { ...arm, rule, ruleText: regionText(rule) };
+    });
+    const header = [...spec.integers.values()].map((info) => {
+      const neighbor = info.neighbor ? ` ${info.neighbor.relation} ${info.neighbor.of}` : "";
+      return `${info.name}${info.typeText}${neighbor}`;
+    });
+    const body = arms.map((arm) => arm.isDefault ? arm.ruleText : `${arm.regionText} ? ${arm.ruleText}`).join("; ");
+    const source = `{?: /${spec.variables.join(", ")}${header.length ? `; ${header.join(", ")}` : ""}/ ${body} }`;
+    return { ...spec, arms, derivativeOf: spec, name: null, source };
+  }
+  var ruleAt = (arm, bindings, context, evaluate) => {
+    try {
+      return withBindings(context, bindings, () => evaluate(arm.rule));
+    } catch {
+      return null;
+    }
+  };
+  function derivativePoint(spec, context, evaluate) {
+    const variable = spec.variables[0];
+    const box = enclosure(evaluate({ fn: "RETRIEVE", args: [variable] }));
+    if (!box)
+      throw new Error(`Piecewise needs a rational, interval, or certified value for ${variable}`);
+    const [lo, hi] = box;
+    const cuts = breakpoints(spec, variable, lo, hi, context, evaluate);
+    if (cuts.length === 0) {
+      const found = locate(spec, context, evaluate);
+      if (found === null)
+        return null;
+      if (found.undecided)
+        return UNDECIDED;
+      return withBindings(context, found.bindings, () => evaluate(found.arm.rule));
+    }
+    if (!lo.equals(hi))
+      return UNDECIDED;
+    const b = lo;
+    const ONE = new Rational(1n, 1n);
+    const near = breakpoints(spec, variable, b.subtract(ONE), b.add(ONE), context, evaluate);
+    const below = near.filter((q) => cmp(q, b) < 0).at(-1) ?? b.subtract(ONE);
+    const above = near.find((q) => cmp(q, b) > 0) ?? b.add(ONE);
+    const side = (q) => withBindings(context, new Map([[variable, q.add(b).divide(TWO)]]), () => locate(spec, context, evaluate));
+    const left = side(below);
+    const right = side(above);
+    if (left === null || right === null)
+      return null;
+    if (left.undecided || right.undecided)
+      return UNDECIDED;
+    const source = spec.derivativeOf;
+    const value = toQ(evaluatePoint(source, context, evaluate));
+    if (value === null)
+      return null;
+    const same = (a, c) => a !== null && c !== null && cmp(a, c) === 0;
+    const sourceLeft = toQ(ruleAt(source.arms[left.arm.index], left.bindings, context, evaluate));
+    const sourceRight = toQ(ruleAt(source.arms[right.arm.index], right.bindings, context, evaluate));
+    if (!same(sourceLeft, value) || !same(sourceRight, value))
+      return null;
+    const slopeLeft = toQ(ruleAt(spec.arms[left.arm.index], left.bindings, context, evaluate));
+    const slopeRight = toQ(ruleAt(spec.arms[right.arm.index], right.bindings, context, evaluate));
+    return same(slopeLeft, slopeRight) ? fromQ(slopeLeft) : null;
+  }
   function breakpoints(spec, variable, a, b, context, evaluate) {
     const points = new Map;
-    const add = (q) => {
-      if (q === null)
-        return;
+    const uncertain = new Map;
+    const put = (q) => {
       if (cmp(q, a) < 0 || cmp(q, b) > 0)
         return;
       points.set(q.toString(), q);
       if (points.size > PIECE_BUDGET)
         throw new Error(`More than ${PIECE_BUDGET} breakpoints in ${a}:${b}; narrow the interval`);
+    };
+    const add = (box) => {
+      if (box === null)
+        return;
+      const [p, q] = box;
+      if (p.equals(q))
+        return put(p);
+      if (cmp(q, a) < 0 || cmp(p, b) > 0)
+        return;
+      uncertain.set(`${p}:${q}`, [p, q]);
+      put(p);
+      put(q);
     };
     for (const arm of spec.arms) {
       if (arm.isDefault)
@@ -91908,7 +92137,9 @@ ${indented.join(`,
         }
       }
     }
-    return [...points.values()].sort(cmp);
+    const sorted = [...points.values()].sort(cmp);
+    sorted.uncertain = [...uncertain.values()];
+    return sorted;
   }
   function hullOf(values) {
     let low = null;
@@ -91989,29 +92220,42 @@ ${indented.join(`,
       return new RationalInterval(q, q);
     throw new Error(`${who} expects an interval such as 0:10`);
   }
+  function piecewiseValue(spec, closureScopes) {
+    const value = {
+      type: "lambda",
+      params: {
+        positional: spec.variables.map((name) => ({ name, holeDefault: null })),
+        keyword: [],
+        conditionals: [],
+        prep: [],
+        prepStrict: false,
+        prepUndecided: "stop",
+        metadata: {}
+      },
+      body: { fn: "PIECEWISE_EVAL", args: [spec] },
+      __closureScopes: closureScopes,
+      ...spec.name ? { __name: spec.name } : {}
+    };
+    Object.defineProperty(value, "__piecewise", { value: spec, enumerable: false, configurable: true });
+    Object.defineProperty(value, "__derive", {
+      value: (variable) => {
+        const name = variable ?? spec.variables[0];
+        if (!spec.variables.includes(name))
+          throw new Error(`F': ${name} is not a variable of this piecewise function`);
+        return piecewiseValue(derivativeSpec(spec, name), closureScopes);
+      },
+      enumerable: false,
+      configurable: true
+    });
+    return value;
+  }
   var piecewiseFunctions = {
     PIECEWISE: {
       lazy: true,
       impl(args, context, evaluate) {
         const meta = args[0];
         const spec = buildSpec(meta, args.slice(1), context, evaluate);
-        const value = {
-          type: "lambda",
-          params: {
-            positional: spec.variables.map((name) => ({ name, holeDefault: null })),
-            keyword: [],
-            conditionals: [],
-            prep: [],
-            prepStrict: false,
-            prepUndecided: "stop",
-            metadata: {}
-          },
-          body: { fn: "PIECEWISE_EVAL", args: [spec] },
-          __closureScopes: context.captureClosureScopes(),
-          ...spec.name ? { __name: spec.name } : {}
-        };
-        Object.defineProperty(value, "__piecewise", { value: spec, enumerable: false, configurable: true });
-        return value;
+        return piecewiseValue(spec, context.captureClosureScopes());
       },
       doc: "Build a piecewise function from {?: /variables; integers/ region ? rule; ...; default }"
     },
@@ -92066,7 +92310,13 @@ ${indented.join(`,
           }
           context.push(new Map([[variable, fromQ(range.low)]]));
           pushed++;
-          return seq7(breakpoints(spec, variable, range.low, range.high, context, evaluate).map(fromQ));
+          const points = breakpoints(spec, variable, range.low, range.high, context, evaluate);
+          const inside = (q) => points.uncertain.some(([p, r]) => cmp(p, q) <= 0 && cmp(q, r) <= 0);
+          const items = [
+            ...points.filter((q) => !inside(q)).map((q) => [q, fromQ(q)]),
+            ...points.uncertain.map(([p, r]) => [p, new RationalInterval(p, r)])
+          ].sort((x, y) => cmp(x[0], y[0]));
+          return seq7(items.map(([, value]) => value));
         } finally {
           for (let i = 0;i < pushed; i++)
             context.pop();
@@ -110300,6 +110550,7 @@ Evidence: ${JSON.stringify(frame.snapshot)}
     RX1804: { level: 1, profiles: ["math"], title: "Unchecked divisor" },
     RX1805: { level: 1, profiles: ["math", "plugin"], title: "Polynomial division dependency" },
     RX1806: { level: 1, profiles: ["math", "plugin"], title: "Unbounded refinement" },
+    RX1807: { level: 2, profiles: ["core", "math"], title: "Piecewise arm can never be reached" },
     RX1901: { level: 1, profiles: ["plugin"], title: "Plugin header contract" },
     RX1902: { level: 2, profiles: ["plugin"], title: "Plugin export contract" },
     RX1903: { level: 1, profiles: ["plugin"], title: "Plugin mount contract" },

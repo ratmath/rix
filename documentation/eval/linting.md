@@ -156,6 +156,7 @@ or incorrectly marked outer, plus its owning scope and suggested spelling.
 | `RX1804` | A divisor is literal zero or an unguarded function parameter. |
 | `RX1805` | Polynomial `/` needs the rational-function capability. |
 | `RX1806` | Refinement has no visible precision/work budget. |
+| `RX1807` | A piecewise arm that earlier arms already cover can never be reached. Checked for one-variable literals with literal bounds and for periodic arms that tile the line. |
 | `RX1901`–`RX1910` | Plugin header, exports, mount, dependencies, collisions, portability, schemas, mutation naming, idempotence, and capability groups. |
 | `RX2001` | A lazy branch is capture-dense enough to consider extraction (style profile at thorough level). |
 | `RX2002` | A lint suppression lacks an explanatory reason. |
