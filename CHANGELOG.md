@@ -21,6 +21,10 @@
   `CertifiedApproximation`, or a `.numerics.Refine` result), so regions can
   use pi or e; undecided comparisons give `?`.
 - Lint rule `RX1807` warns about a piecewise arm that earlier arms cover.
+- `rix --host-module=SPEC` trusts an outside host plugin package (a path or a
+  package name resolved from the working directory) that exports
+  `registerRixPlugins(catalog)`. This is how `@ratmath/rix-bridge` adds the
+  ratmath JavaScript libraries without RiX depending on them.
 - Integer subtypes `Natural` (n >= 0), `Positive`, `Negative`, `Even` and
   `Odd`, and `.IntegerType(:Name, {= mod, residues, min, max })` for user
   subtypes; `.TypeRegister` also accepts `shape`, `next` and `prev`. Type
@@ -36,6 +40,8 @@
 
 ### Changed
 
+- `@ratmath/core` is now `^0.9.0`, so RiX and the ratmath libraries can share
+  one Core instance.
 - `a:!b` used to read as `a:(NOT b)`, which always gave `_`; it is now a
   strict link. `_` touching a colon is now an unbounded end rather than a
   null endpoint; a variable holding `_` is still null.

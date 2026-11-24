@@ -11,7 +11,8 @@
 import { existsSync, readFileSync, mkdirSync, readdirSync, statSync, writeFileSync } from "fs";
 import path from "path";
 import { createInterface, emitKeypressEvents } from "readline";
-import { fileURLToPath } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
+import { createRequire } from "module";
 import {
     tokenize,
     parse,
@@ -103,6 +104,7 @@ function usage() {
 Options:
   --out=DIR              Write artifacts declared with .Out(path, value) into DIR
   --plugin=ID             Add a plugin to the selected set (repeatable)
+  --host-module=SPEC      Trust a host plugin package (path or package name) that exports registerRixPlugins
   --plugins=a,b           Replace preloads; full is the REPL default, none is bare
   --all-plugins           Preload every discovered plugin with an approved installer
   --all-built-plugins     Preload every plugin shipped in this RiX repository
@@ -545,10 +547,19 @@ function parseRunnerArgs(rawArgs) {
     let noConfig = false;
     let configDir = null;
     const operatorFiles = [];
+    const hostModules = [];
     const positional = [];
     for (let index = 0; index < rawArgs.length; index += 1) {
         const arg = rawArgs[index];
-        if (arg === "--with-floats") {
+        if (arg === "--host-module") {
+            const spec = rawArgs[++index];
+            if (!spec) throw new Error("--host-module requires a module path or package name");
+            hostModules.push(spec);
+        } else if (arg.startsWith("--host-module=")) {
+            const spec = arg.slice("--host-module=".length);
+            if (!spec) throw new Error("--host-module requires a module path or package name");
+            hostModules.push(spec);
+        } else if (arg === "--with-floats") {
             plugins.push("float");
             pluginsSpecified = true;
         }
@@ -615,6 +626,7 @@ function parseRunnerArgs(rawArgs) {
         allBuiltPlugins,
         outDir,
         operatorFiles,
+        hostModules,
         preamble,
         noPreamble,
         noConfig,
@@ -1166,6 +1178,28 @@ async function runTests(filters, options = {}) {
     process.exit(failedFiles > 0 ? 1 : 0);
 }
 
+/**
+ * Trust a host plugin package named on the command line: a module that
+ * exports registerRixPlugins(catalog), such as @ratmath/rix-bridge. Naming it
+ * is the host's trust decision; nothing is imported otherwise.
+ */
+async function registerHostModule(pluginCatalog, spec) {
+    let resolved;
+    if (spec.startsWith(".") || path.isAbsolute(spec)) resolved = path.resolve(spec);
+    else {
+        try {
+            resolved = createRequire(path.join(process.cwd(), "package.json")).resolve(spec);
+        } catch {
+            throw new Error(`--host-module: cannot find '${spec}' from ${process.cwd()}; install it there or pass a path`);
+        }
+    }
+    const module = await import(pathToFileURL(resolved).href);
+    if (typeof module.registerRixPlugins !== "function") {
+        throw new Error(`--host-module: '${spec}' does not export registerRixPlugins(catalog)`);
+    }
+    module.registerRixPlugins(pluginCatalog);
+}
+
 async function main() {
     const rawArgs = process.argv.slice(2);
     if (rawArgs[0] === "publish") return (await import("./publication-build.js")).runPublicationCli(rawArgs.slice(1));
@@ -1182,6 +1216,7 @@ async function main() {
         allBuiltPlugins,
         outDir,
         operatorFiles,
+        hostModules,
         preamble,
         noPreamble,
         noConfig,
@@ -1201,6 +1236,7 @@ async function main() {
     ].filter(Boolean);
     const pluginCatalog = new NodePluginCatalog({ roots: [...new Set(pluginRoots)] }).scan();
     registerBuiltPluginInstallers(pluginCatalog);
+    for (const spec of hostModules) await registerHostModule(pluginCatalog, spec);
     const configDir = configDirOption ? path.resolve(configDirOption) : resolveRixConfigDir();
 
     if (args[0] === "setup") {
