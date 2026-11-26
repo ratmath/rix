@@ -62771,12 +62771,917 @@ ${indentStr})`;
     return `{${entries.join(", ")}}`;
   }
 
+  // node_modules/@ratmath/core/src/units.js
+  var BASE_DIMENSIONS = Object.freeze([
+    "Mass",
+    "Length",
+    "Time",
+    "Current",
+    "Temperature",
+    "Amount",
+    "Luminosity",
+    "Angle",
+    "Information"
+  ]);
+  var BASE_SYMBOLS = Object.freeze({
+    Mass: "kg",
+    Length: "m",
+    Time: "s",
+    Current: "A",
+    Temperature: "K",
+    Amount: "mol",
+    Luminosity: "cd",
+    Angle: "rad",
+    Information: "bit"
+  });
+  var ZERO2 = new Integer(0n);
+  var ONE2 = new Integer(1n);
+  function exactRational2(value, label = "value") {
+    if (value instanceof Integer || value instanceof Rational)
+      return normalize2(value);
+    if (typeof value === "bigint")
+      return new Integer(value);
+    if (typeof value === "number" && Number.isSafeInteger(value))
+      return new Integer(BigInt(value));
+    if (typeof value === "string") {
+      const parsed = parseScalarText(value);
+      if (parsed instanceof Integer || parsed instanceof Rational)
+        return normalize2(parsed);
+    }
+    throw new TypeError(`${label} must be an exact rational`);
+  }
+  function normalize2(value) {
+    return value instanceof Rational && value.denominator === 1n ? new Integer(value.numerator) : value;
+  }
+  var DECIMAL_E = /^([-+]?)(\d*)(?:\.(\d*))?[eE]([-+]?\d+)$/;
+  function parseScalarText(text) {
+    const source = String(text).trim();
+    const match = DECIMAL_E.exec(source);
+    if (match && (match[2] || match[3])) {
+      const [, sign, whole, part = "", exponent] = match;
+      let numerator = BigInt((whole || "0") + part);
+      if (sign === "-")
+        numerator = -numerator;
+      const shift = BigInt(exponent) - BigInt(part.length);
+      return normalize2(shift >= 0n ? new Integer(numerator * 10n ** shift) : new Rational(numerator, 10n ** -shift));
+    }
+    return parseNumber(source);
+  }
+  function isCoreScalar(value) {
+    return value instanceof Integer || value instanceof Rational || value instanceof RationalInterval || value instanceof CertifiedApproximation;
+  }
+  var PI_LOW = new Rational("3.14159265358979323846264338327950288");
+  var PI_HIGH = new Rational("3.14159265358979323846264338327950289");
+  var PI_ENCLOSURE = new RationalInterval(PI_LOW, PI_HIGH);
+  var piPowers = new Map;
+  var coreScalars = Object.freeze({
+    isScalar: isCoreScalar,
+    from(value) {
+      if (isCoreScalar(value))
+        return value;
+      if (typeof value === "bigint")
+        return new Integer(value);
+      if (typeof value === "number" && Number.isSafeInteger(value))
+        return new Integer(BigInt(value));
+      if (typeof value === "string")
+        return parseScalarText(value);
+      if (typeof value === "number") {
+        throw new TypeError(`Cannot use inexact number ${value} as a magnitude; pass a string such as "${value}"`);
+      }
+      throw new TypeError(`Cannot use ${value === null ? "null" : typeof value} as a magnitude`);
+    },
+    add: (a, b) => TypePromotion.add(a, b),
+    subtract: (a, b) => TypePromotion.subtract(a, b),
+    multiply: (a, b) => TypePromotion.multiply(a, b),
+    divide: (a, b) => TypePromotion.divide(a, b),
+    negate: (a) => typeof a.negate === "function" ? a.negate() : TypePromotion.negate(a),
+    pow: (a, n) => a.pow(n),
+    relation: (a, b) => possibleRelations(a, b),
+    pi(k) {
+      if (!piPowers.has(k))
+        piPowers.set(k, PI_ENCLOSURE.pow(k));
+      return piPowers.get(k);
+    }
+  });
+  function makeDimensions(entries) {
+    const out = {};
+    for (const name of BASE_DIMENSIONS) {
+      const exponent = entries[name];
+      if (exponent)
+        out[name] = exponent;
+    }
+    for (const [name, exponent] of Object.entries(entries)) {
+      if (!(name in out) && exponent)
+        out[name] = exponent;
+    }
+    return Object.freeze(out);
+  }
+  function combineDimensions(a, b, sign) {
+    const out = { ...a };
+    for (const [name, exponent] of Object.entries(b))
+      out[name] = (out[name] || 0) + sign * exponent;
+    return makeDimensions(out);
+  }
+  function scaleDimensions(a, n) {
+    return makeDimensions(Object.fromEntries(Object.entries(a).map(([k, e]) => [k, e * n])));
+  }
+  function dimensionsEqual(a, b) {
+    const ka = Object.keys(a);
+    return ka.length === Object.keys(b).length && ka.every((k) => a[k] === b[k]);
+  }
+  function formatDimensions(dimensions) {
+    const parts = Object.entries(dimensions).map(([k, e]) => e === 1 ? k : `${k}^${e}`);
+    return parts.length ? parts.join("*") : "Dimensionless";
+  }
+  function checkInteger(n, label = "exponent") {
+    if (typeof n === "bigint")
+      n = Number(n);
+    if (n instanceof Integer)
+      n = Number(n.value);
+    if (!Number.isSafeInteger(n))
+      throw new TypeError(`Unit ${label} must be an integer`);
+    return n;
+  }
+  var SUPERSCRIPT = { "-": "⁻", 0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹" };
+
+  class Unit {
+    constructor(name, options = {}) {
+      if (typeof name !== "string" || !name)
+        throw new TypeError("A unit needs a name");
+      this.name = name;
+      this.dimensions = makeDimensions(options.dimensions || {});
+      this.scale = exactRational2(options.scale ?? ONE2, "Unit scale");
+      if (signOf(this.scale) <= 0) {
+        throw new RangeError("Unit scale must be positive");
+      }
+      this.piPower = checkInteger(options.piPower ?? 0, "pi power");
+      this.kind = options.kind || "linear";
+      if (!["linear", "affine", "difference"].includes(this.kind))
+        throw new TypeError(`Unknown unit kind '${this.kind}'`);
+      this.offset = exactRational2(options.offset ?? ZERO2, "Unit offset");
+      if (this.kind !== "affine" && !isZero2(this.offset))
+        throw new TypeError("Only an affine unit has an offset");
+      if (this.kind === "affine" && this.piPower !== 0)
+        throw new TypeError("An affine unit cannot carry pi");
+      this.differenceUnit = options.differenceUnit || null;
+      this.group = options.group || null;
+      this.prefixes = options.prefixes || null;
+      if (this.prefixes !== null && this.prefixes !== "SI" && this.prefixes !== "SI+binary") {
+        throw new TypeError(`Unit prefixes must be "SI" or "SI+binary"`);
+      }
+      this.factors = Object.freeze(options.factors || [[this, 1]]);
+      Object.freeze(this);
+    }
+    get isNamed() {
+      return this.factors.length === 1 && this.factors[0][0] === this && this.factors[0][1] === 1;
+    }
+    get isDimensionless() {
+      return Object.keys(this.dimensions).length === 0;
+    }
+    multiply(other) {
+      return compound(this, other, 1);
+    }
+    divide(other) {
+      return compound(this, other, -1);
+    }
+    inverse() {
+      return compound(null, this, -1);
+    }
+    pow(exponent) {
+      const n = checkInteger(exponent);
+      requireLinear(this);
+      if (n === 1)
+        return this;
+      return buildCompound(this.factors.map(([u, e]) => [u, e * n]), scaleDimensions(this.dimensions, n), normalize2(this.scale.pow(n)), this.piPower * n);
+    }
+    isCompatible(other) {
+      return dimensionsEqual(this.dimensions, other.dimensions);
+    }
+    equals(other) {
+      return other instanceof Unit && this.isCompatible(other) && this.kind === other.kind && this.piPower === other.piPower && this.scale.equals(other.scale) && this.offset.equals(other.offset);
+    }
+    toString({ style = "ascii" } = {}) {
+      if (this.isNamed)
+        return this.name;
+      const unicode = style === "unicode";
+      const times = unicode ? "·" : "*";
+      const power = (n) => n === 1 ? "" : unicode ? [...String(n)].map((c) => SUPERSCRIPT[c]).join("") : `^${n}`;
+      const top = [];
+      const bottom = [];
+      for (const [unit, e] of this.factors)
+        (e > 0 ? top : bottom).push(`${unit.name}${power(Math.abs(e))}`);
+      if (!top.length && !bottom.length)
+        return "1";
+      const numerator = top.length ? top.join(times) : "1";
+      if (!bottom.length)
+        return numerator;
+      return `${numerator}/${bottom.length > 1 ? `(${bottom.join(times)})` : bottom[0]}`;
+    }
+  }
+  function signOf(r) {
+    const n = r instanceof Integer ? r.value : r.numerator;
+    return n > 0n ? 1 : n < 0n ? -1 : 0;
+  }
+  function isZero2(r) {
+    return signOf(r) === 0;
+  }
+  var rmul = (a, b) => normalize2(TypePromotion.multiply(a, b));
+  var rdiv = (a, b) => normalize2(TypePromotion.divide(a, b));
+  var rsub = (a, b) => normalize2(TypePromotion.subtract(a, b));
+  function requireLinear(unit) {
+    if (unit.kind === "affine") {
+      throw new Error(`Affine unit '${unit.name}' cannot be used in a compound unit (a product, quotient or power); convert to K first`);
+    }
+  }
+  function compound(left, right, sign) {
+    if (!(right instanceof Unit))
+      throw new TypeError("Expected a Unit");
+    if (left)
+      requireLinear(left);
+    requireLinear(right);
+    const factors = new Map;
+    const add = (unit, e) => {
+      const [key, prev] = [unit.name, factors.get(unit.name)];
+      const next = (prev ? prev[1] : 0) + e;
+      if (next === 0)
+        factors.delete(key);
+      else
+        factors.set(key, [prev ? prev[0] : unit, next]);
+    };
+    if (left)
+      for (const [u, e] of left.factors)
+        add(u, e);
+    for (const [u, e] of right.factors)
+      add(u, sign * e);
+    const scale = left ? sign > 0 ? rmul(left.scale, right.scale) : rdiv(left.scale, right.scale) : rdiv(ONE2, right.scale);
+    return buildCompound([...factors.values()], combineDimensions(left ? left.dimensions : {}, right.dimensions, sign), scale, (left ? left.piPower : 0) + sign * right.piPower);
+  }
+  function buildCompound(factors, dimensions, scale, piPower) {
+    if (factors.length === 1 && factors[0][1] === 1)
+      return factors[0][0];
+    const unit = Object.create(Unit.prototype);
+    const name = Unit.prototype.toString.call({ isNamed: false, factors });
+    Object.assign(unit, {
+      name,
+      dimensions,
+      scale: normalize2(scale),
+      piPower,
+      kind: "linear",
+      offset: ZERO2,
+      differenceUnit: null,
+      group: null,
+      prefixes: null,
+      factors: Object.freeze(factors)
+    });
+    return Object.freeze(unit);
+  }
+  var SUPER_DIGITS = { "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4", "⁵": "5", "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9", "⁻": "-" };
+  var NAME = /^[\p{L}_°][\p{L}\p{Nd}_]*/u;
+  function parseUnitExpression(source, lookup) {
+    const text = String(source);
+    let i = 0;
+    const skip = () => {
+      while (i < text.length && /\s/.test(text[i]))
+        i++;
+    };
+    const fail = (msg) => {
+      throw new SyntaxError(`${msg} in unit '${text}' at character ${i + 1}`);
+    };
+    function exponent() {
+      skip();
+      if (text[i] === "^") {
+        i++;
+        skip();
+        const m = /^[-+]?\d+/.exec(text.slice(i)) || /^\([-+]?\d+\)/.exec(text.slice(i));
+        if (!m)
+          fail("Expected an integer exponent");
+        i += m[0].length;
+        return Number(m[0].replace(/[()]/g, ""));
+      }
+      let digits = "";
+      while (i < text.length && text[i] in SUPER_DIGITS)
+        digits += SUPER_DIGITS[text[i++]];
+      if (digits) {
+        if (!/^-?\d+$/.test(digits))
+          fail("Bad superscript exponent");
+        return Number(digits);
+      }
+      return 1;
+    }
+    function primary() {
+      skip();
+      if (text[i] === "(") {
+        i++;
+        const value = product();
+        skip();
+        if (text[i] !== ")")
+          fail("Expected ')'");
+        i++;
+        return value;
+      }
+      if (text[i] === "1" && !/\d/.test(text[i + 1] || "")) {
+        i++;
+        return null;
+      }
+      const m = NAME.exec(text.slice(i));
+      if (!m)
+        fail("Expected a unit name");
+      i += m[0].length;
+      return lookup(m[0]);
+    }
+    function factor() {
+      const base = primary();
+      const e = exponent();
+      if (base === null) {
+        if (e !== 1)
+          fail("Cannot raise 1 to a power");
+        return null;
+      }
+      return e === 1 ? base : base.pow(e);
+    }
+    const times = (a, b) => a === null ? b : b === null ? a : a.multiply(b);
+    const over = (a, b) => b === null ? a : a === null ? b.inverse() : a.divide(b);
+    function product() {
+      let value = factor();
+      for (;; ) {
+        skip();
+        const c = text[i];
+        if (c === "*" || c === "·" || c === "⋅") {
+          i++;
+          value = times(value, factor());
+        } else if (c === "/") {
+          i++;
+          value = over(value, factor());
+        } else if (c !== undefined && c !== ")" && (NAME.test(text.slice(i)) || c === "("))
+          value = times(value, factor());
+        else
+          return value;
+      }
+    }
+    skip();
+    if (i >= text.length)
+      throw new SyntaxError("A unit expression cannot be empty");
+    const result = product();
+    skip();
+    if (i < text.length)
+      fail("Unexpected input");
+    if (result === null)
+      fail("A unit expression needs a unit");
+    return result;
+  }
+  function toUnit(system, unit) {
+    if (unit instanceof Unit)
+      return unit;
+    if (typeof unit === "string")
+      return system.parse(unit);
+    throw new TypeError("Expected a Unit or a unit expression string");
+  }
+
+  class Quantity {
+    constructor(value, unit, { point, system = units } = {}) {
+      if (!(system instanceof UnitSystem))
+        throw new TypeError("Quantity system must be a UnitSystem");
+      this.system = system;
+      this.unit = toUnit(system, unit);
+      this.value = system.scalars.from(value);
+      this.point = point ?? this.unit.kind === "affine";
+      if (this.point && this.unit.kind === "difference")
+        throw new TypeError("A difference unit cannot hold a point");
+      if (!this.point && this.unit.kind === "affine")
+        throw new TypeError(`'${this.unit.name}' values are points`);
+      Object.freeze(this);
+    }
+    get dimensions() {
+      return this.unit.dimensions;
+    }
+    #make(value, unit, point = false) {
+      return new Quantity(value, unit, { point, system: this.system });
+    }
+    #factor(from, to) {
+      const s = this.system.scalars;
+      const ratio = rdiv(from.scale, to.scale);
+      const k = from.piPower - to.piPower;
+      return k === 0 ? ratio : s.multiply(ratio, s.pi(k));
+    }
+    #linearIn(target) {
+      if (this.unit === target)
+        return this.value;
+      return this.system.scalars.multiply(this.value, this.#factor(this.unit, target));
+    }
+    #sameDimensions(other, what) {
+      if (!dimensionsEqual(this.dimensions, other.dimensions)) {
+        throw new Error(`Incompatible dimensions for ${what}: ${formatDimensions(this.dimensions)} and ${formatDimensions(other.dimensions)}`);
+      }
+    }
+    #other(other) {
+      if (other instanceof Quantity)
+        return other;
+      throw new TypeError("Expected a Quantity");
+    }
+    valueIn(target) {
+      return this.to(target).value;
+    }
+    to(target) {
+      const unit = toUnit(this.system, target);
+      this.#sameDimensions(unit, "conversion");
+      if (this.point && unit.kind === "difference")
+        throw new Error(`Cannot convert a temperature point to the difference unit '${unit.name}'`);
+      if (!this.point && unit.kind === "affine" && this.unit.kind === "difference") {
+        throw new Error(`Cannot convert the difference unit '${this.unit.name}' to the point scale '${unit.name}'`);
+      }
+      const point = this.point || unit.kind === "affine";
+      if (unit === this.unit)
+        return this;
+      const s = this.system.scalars;
+      let value = this.#linearIn(unit);
+      if (point) {
+        const shift = rsub(this.unit.kind === "affine" ? this.unit.offset : ZERO2, unit.kind === "affine" ? unit.offset : ZERO2);
+        if (!isZero2(shift))
+          value = s.add(value, rdiv(shift, unit.scale));
+      }
+      return this.#make(value, unit, point);
+    }
+    toBase() {
+      return this.to(this.system.coherentUnit(this.dimensions));
+    }
+    simplify() {
+      const named = this.system.namedCoherentUnit(this.dimensions);
+      return this.to(named || this.system.coherentUnit(this.dimensions));
+    }
+    add(other) {
+      other = this.#other(other);
+      this.#sameDimensions(other, "addition");
+      const s = this.system.scalars;
+      if (this.point && other.point)
+        throw new Error("Cannot add two temperature points; add a difference instead");
+      if (other.point)
+        return this.#make(s.add(this.#linearIn(other.unit), other.value), other.unit, true);
+      return this.#make(s.add(this.value, other.#linearIn(this.unit)), this.unit, this.point);
+    }
+    subtract(other) {
+      other = this.#other(other);
+      this.#sameDimensions(other, "subtraction");
+      const s = this.system.scalars;
+      if (other.point && !this.point && this.unit.kind === "difference") {
+        throw new Error("Cannot subtract a temperature point from a difference");
+      }
+      if (other.point) {
+        const value = s.subtract(this.value, other.to(this.unit).value);
+        return this.#make(value, differenceUnitOf(this.unit), false);
+      }
+      return this.#make(s.subtract(this.value, other.#linearIn(this.unit)), this.unit, this.point);
+    }
+    negate() {
+      if (this.point && this.unit.kind === "affine")
+        throw new Error("Cannot negate a temperature point");
+      return this.#make(this.system.scalars.negate(this.value), this.unit, this.point);
+    }
+    multiply(other) {
+      return this.#product(other, 1);
+    }
+    divide(other) {
+      return this.#product(other, -1);
+    }
+    #product(other, sign) {
+      const s = this.system.scalars;
+      if (other instanceof Quantity) {
+        if (this.unit.kind === "affine" || other.unit.kind === "affine") {
+          throw new Error("Temperatures on the degC or degF scale cannot be multiplied or divided; convert to K");
+        }
+        const value = sign > 0 ? s.multiply(this.value, other.value) : s.divide(this.value, other.value);
+        return this.#collapse(value, sign > 0 ? this.unit.multiply(other.unit) : this.unit.divide(other.unit));
+      }
+      if (other instanceof Unit)
+        return this.#product(this.#make(ONE2, other), sign);
+      const scalar = s.from(other);
+      if (this.point && this.unit.kind === "affine")
+        throw new Error("Cannot scale a temperature point");
+      return this.#make(sign > 0 ? s.multiply(this.value, scalar) : s.divide(this.value, scalar), this.unit, false);
+    }
+    #collapse(value, unit) {
+      if (!unit.isDimensionless)
+        return this.#make(value, unit, false);
+      const s = this.system.scalars;
+      const factor = this.#factor(unit, this.system.coherentUnit({}));
+      return factor instanceof Integer && factor.value === 1n ? value : s.multiply(value, factor);
+    }
+    inverse() {
+      if (this.unit.kind === "affine")
+        throw new Error("Temperatures on the degC or degF scale cannot be inverted; convert to K");
+      return this.#make(this.system.scalars.divide(ONE2, this.value), this.unit.inverse());
+    }
+    pow(exponent) {
+      const n = checkInteger(exponent);
+      if (this.unit.kind === "affine")
+        throw new Error("Temperatures on the degC or degF scale cannot be raised to a power");
+      if (n === 0)
+        return ONE2;
+      return this.#collapse(this.system.scalars.pow(this.value, n), this.unit.pow(n));
+    }
+    relation(other) {
+      other = this.#other(other);
+      this.#sameDimensions(other, "comparison");
+      if (this.point !== other.point && (this.unit.kind === "difference" || other.unit.kind === "difference")) {
+        throw new Error("Cannot compare a temperature point with a difference");
+      }
+      const value = this.point || other.point ? other.to(this.unit).value : other.#linearIn(this.unit);
+      return this.system.scalars.relation(this.value, value);
+    }
+    compare(other) {
+      const mask = this.relation(other);
+      if (mask === Relation.LESS)
+        return -1;
+      if (mask === Relation.EQUAL)
+        return 0;
+      if (mask === Relation.GREATER)
+        return 1;
+      throw new Error("Quantity order is undecided: the magnitudes overlap");
+    }
+    equals(other) {
+      return other instanceof Quantity && dimensionsEqual(this.dimensions, other.dimensions) && this.relation(other) === Relation.EQUAL;
+    }
+    toString({ style = "ascii", format = (v) => v.toString() } = {}) {
+      const unit = this.unit.toString({ style });
+      return unit === "1" ? format(this.value) : `${format(this.value)} ${unit}`;
+    }
+  }
+  function differenceUnitOf(unit) {
+    if (unit.differenceUnit)
+      return unit.differenceUnit;
+    if (unit.kind !== "affine")
+      return unit;
+    return new Unit(`delta${unit.name}`, { dimensions: unit.dimensions, scale: unit.scale, kind: "difference" });
+  }
+  var SI_PREFIXES = [
+    ["Q", "quetta", 30],
+    ["R", "ronna", 27],
+    ["Y", "yotta", 24],
+    ["Z", "zetta", 21],
+    ["E", "exa", 18],
+    ["P", "peta", 15],
+    ["T", "tera", 12],
+    ["G", "giga", 9],
+    ["M", "mega", 6],
+    ["k", "kilo", 3],
+    ["h", "hecto", 2],
+    ["da", "deca", 1],
+    ["d", "deci", -1],
+    ["c", "centi", -2],
+    ["m", "milli", -3],
+    ["µ", "micro", -6],
+    ["μ", null, -6],
+    ["u", null, -6],
+    ["n", "nano", -9],
+    ["p", "pico", -12],
+    ["f", "femto", -15],
+    ["a", "atto", -18],
+    ["z", "zepto", -21],
+    ["y", "yocto", -24],
+    ["r", "ronto", -27],
+    ["q", "quecto", -30]
+  ];
+  var BINARY_PREFIXES = [
+    ["Ki", "kibi", 10],
+    ["Mi", "mebi", 20],
+    ["Gi", "gibi", 30],
+    ["Ti", "tebi", 40],
+    ["Pi", "pebi", 50],
+    ["Ei", "exbi", 60]
+  ];
+  function prefixScale(prefix) {
+    const [, , e, binary] = prefix;
+    if (binary)
+      return new Integer(1n << BigInt(e));
+    return e >= 0 ? new Integer(10n ** BigInt(e)) : new Rational(1n, 10n ** BigInt(-e));
+  }
+
+  class UnitSystem {
+    #entries = new Map;
+    #lower = new Map;
+    #units = [];
+    #prefixed = new Map;
+    constructor({ scalars = coreScalars } = {}) {
+      for (const k of ["isScalar", "from", "add", "subtract", "multiply", "divide", "negate", "pow", "relation", "pi"]) {
+        if (typeof scalars[k] !== "function")
+          throw new TypeError(`scalars.${k} must be a function`);
+      }
+      this.scalars = scalars;
+    }
+    extend({ scalars = this.scalars } = {}) {
+      const copy = new UnitSystem({ scalars });
+      for (const [k, v] of this.#entries)
+        copy.#entries.set(k, v);
+      for (const [k, v] of this.#lower)
+        copy.#lower.set(k, v);
+      copy.#units = [...this.#units];
+      return copy;
+    }
+    define(name, definition, options = {}) {
+      let spec;
+      if (definition instanceof Unit) {
+        spec = {
+          dimensions: definition.dimensions,
+          scale: definition.scale,
+          piPower: definition.piPower,
+          kind: definition.kind,
+          offset: definition.offset,
+          differenceUnit: definition.differenceUnit
+        };
+      } else if (definition instanceof Quantity) {
+        if (definition.unit.kind === "affine")
+          throw new TypeError("Define a unit from a linear quantity");
+        spec = this.#specFrom(definition.value, definition.unit);
+      } else if (typeof definition === "string") {
+        const { value, unit } = this.#splitQuantityText(definition);
+        spec = this.#specFrom(value, unit);
+      } else if (definition && typeof definition === "object") {
+        spec = definition;
+      } else {
+        throw new TypeError("A unit definition must be a Unit, Quantity, string or { dimensions }");
+      }
+      const unit = new Unit(name, {
+        dimensions: spec.dimensions,
+        scale: spec.scale,
+        piPower: spec.piPower,
+        kind: options.kind ?? spec.kind,
+        offset: options.offset ?? spec.offset,
+        differenceUnit: options.differenceUnit ?? spec.differenceUnit,
+        group: options.group ?? null,
+        prefixes: options.prefixes ?? null
+      });
+      const keys = [name, ...options.aliases || []];
+      if (!options.replace) {
+        for (const key of keys)
+          if (this.#entries.has(key))
+            throw new Error(`Unit '${key}' is already defined`);
+      }
+      for (const key of keys)
+        this.#add(key, unit);
+      return unit;
+    }
+    register(key, unit, { replace = false, prefixes = true } = {}) {
+      if (typeof key !== "string" || !key)
+        throw new TypeError("register needs a name");
+      if (!(unit instanceof Unit))
+        throw new TypeError("register needs a Unit");
+      if (!replace && this.#entries.has(key))
+        throw new Error(`Unit '${key}' is already defined`);
+      this.#add(key, unit, prefixes);
+      return unit;
+    }
+    #add(key, unit, prefixes = true) {
+      const word = key !== unit.name && /^\p{Ll}{3,}$/u.test(key);
+      const mode = prefixes && unit.prefixes ? word ? "name" : "symbol" : null;
+      this.#entries.set(key, { unit, prefix: mode, binary: unit.prefixes === "SI+binary" });
+      if (/^\p{L}{3,}$/u.test(key))
+        this.#lower.set(key.toLowerCase(), key);
+      if (!this.#units.includes(unit))
+        this.#units.push(unit);
+      this.#prefixed.clear();
+    }
+    #specFrom(value, unit) {
+      const scale = this.scalars.multiply(value, unit.scale);
+      if (!(scale instanceof Integer || scale instanceof Rational)) {
+        throw new TypeError("A unit definition needs an exact rational magnitude");
+      }
+      return { dimensions: unit.dimensions, scale, piPower: unit.piPower };
+    }
+    #splitQuantityText(text) {
+      const source = String(text).trim();
+      const m = /^([-+]?(?:\d|\.\d)\S*)\s+(.+)$/s.exec(source);
+      if (m)
+        return { value: this.scalars.from(m[1]), unit: this.parse(m[2]) };
+      return { value: ONE2, unit: this.parse(source) };
+    }
+    has(name) {
+      try {
+        this.get(name);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    get(name) {
+      const entry = this.#entries.get(name);
+      if (entry)
+        return entry.unit;
+      const prefixed = this.#prefixed.get(name) || this.#tryPrefix(name);
+      if (prefixed)
+        return prefixed;
+      const lower = this.#lower.get(name.toLowerCase());
+      if (lower)
+        return this.#entries.get(lower).unit;
+      throw new Error(`Unknown unit '${name}'`);
+    }
+    #tryPrefix(name) {
+      const tables = [
+        ...SI_PREFIXES.map(([sym, word, e]) => [sym, word, e, false]),
+        ...BINARY_PREFIXES.map(([sym, word, e]) => [sym, word, e, true])
+      ];
+      for (const prefix of tables) {
+        const [sym, word, , isBinary] = prefix;
+        for (const [text, mode] of [[sym, "symbol"], [word, "name"]]) {
+          if (!text || !name.startsWith(text) || name.length === text.length)
+            continue;
+          const entry = this.#entries.get(name.slice(text.length));
+          if (!entry || entry.prefix !== mode || isBinary && !entry.binary)
+            continue;
+          const base = entry.unit;
+          const unit = new Unit(name, {
+            dimensions: base.dimensions,
+            scale: rmul(base.scale, prefixScale(prefix)),
+            piPower: base.piPower,
+            group: base.group
+          });
+          this.#prefixed.set(name, unit);
+          return unit;
+        }
+      }
+      return null;
+    }
+    parse(expression) {
+      return parseUnitExpression(expression, (name) => this.get(name));
+    }
+    quantity(value, unit) {
+      if (unit === undefined) {
+        if (typeof value !== "string")
+          throw new TypeError('quantity(text) needs a string such as "9.8 m/s^2"');
+        const parts = this.#splitQuantityText(value);
+        if (!/^\s*[-+]?(?:\d|\.\d)/.test(value))
+          throw new SyntaxError(`Expected a magnitude before the unit in '${value}'`);
+        return new Quantity(parts.value, parts.unit, { system: this });
+      }
+      return new Quantity(value, unit, { system: this });
+    }
+    coherentUnit(dimensions) {
+      let unit = null;
+      for (const [name, e] of Object.entries(dimensions)) {
+        const symbol = BASE_SYMBOLS[name];
+        if (!symbol)
+          throw new Error(`No base unit for dimension '${name}'`);
+        const base = this.get(symbol).pow(e);
+        unit = unit ? unit.multiply(base) : base;
+      }
+      return unit || DIMENSIONLESS;
+    }
+    namedCoherentUnit(dimensions) {
+      return this.#units.find((u) => u.kind === "linear" && u.piPower === 0 && u.scale.equals(ONE2) && dimensionsEqual(u.dimensions, dimensions)) || null;
+    }
+    groups() {
+      const out = new Map;
+      for (const unit of this.#units) {
+        if (!unit.group)
+          continue;
+        if (!out.has(unit.group))
+          out.set(unit.group, []);
+        out.get(unit.group).push(unit);
+      }
+      return [...out].map(([title, list]) => ({ title, units: list }));
+    }
+    names() {
+      return [...this.#entries.keys()];
+    }
+  }
+  var DIMENSIONLESS = Object.freeze(Object.assign(Object.create(Unit.prototype), {
+    name: "1",
+    dimensions: Object.freeze({}),
+    scale: ONE2,
+    piPower: 0,
+    kind: "linear",
+    offset: ZERO2,
+    differenceUnit: null,
+    group: null,
+    prefixes: null,
+    factors: Object.freeze([])
+  }));
+  function standardCatalogue(system) {
+    const def = (name, definition, options = {}) => system.define(name, definition, options);
+    const SI = { prefixes: "SI" };
+    let group = null;
+    const g = (title) => {
+      group = title;
+    };
+    const d = (name, definition, options = {}) => def(name, definition, { group, ...options });
+    g("Length");
+    d("m", { dimensions: { Length: 1 } }, { ...SI, aliases: ["metre", "meter"] });
+    g("Mass");
+    d("kg", { dimensions: { Mass: 1 } }, { aliases: ["kilogram"] });
+    d("g", "0.001 kg", { ...SI, aliases: ["gram"] });
+    g("Time");
+    d("s", { dimensions: { Time: 1 } }, { ...SI, aliases: ["second", "sec"] });
+    g("Electricity");
+    d("A", { dimensions: { Current: 1 } }, { ...SI, aliases: ["ampere", "amp"] });
+    g("Temperature");
+    d("K", { dimensions: { Temperature: 1 } }, { ...SI, aliases: ["kelvin"] });
+    g("Amount");
+    d("mol", { dimensions: { Amount: 1 } }, { ...SI, aliases: ["mole"] });
+    g("Luminosity");
+    d("cd", { dimensions: { Luminosity: 1 } }, { ...SI, aliases: ["candela"] });
+    g("Angle");
+    d("rad", { dimensions: { Angle: 1 } }, { ...SI, aliases: ["radian"] });
+    g("Information");
+    d("bit", { dimensions: { Information: 1 } }, { prefixes: "SI+binary", aliases: ["bits"] });
+    g("Length");
+    d("in", "0.0254 m", { aliases: ["inch"] });
+    d("ft", "12 in", { aliases: ["foot", "feet"] });
+    d("yd", "3 ft", { aliases: ["yard"] });
+    d("mi", "5280 ft", { aliases: ["mile"] });
+    d("nmi", "1852 m", { aliases: ["nautical_mile"] });
+    d("Å", "1E-10 m", { aliases: ["angstrom"] });
+    d("au", "149597870700 m");
+    d("ly", "9460730472580800 m", { aliases: ["lightyear"] });
+    d("pc", { dimensions: { Length: 1 }, scale: 149597870700n * 648000n, piPower: -1 }, { aliases: ["parsec"] });
+    g("Mass");
+    d("t", "1000 kg", { aliases: ["tonne"] });
+    d("lb", "0.45359237 kg", { aliases: ["pound"] });
+    d("oz", "1/16 lb", { aliases: ["ounce"] });
+    g("Time");
+    d("min", "60 s", { aliases: ["minute"] });
+    d("h", "60 min", { aliases: ["hr", "hour"] });
+    d("day", "24 h", { aliases: ["days"] });
+    d("week", "7 day", { aliases: ["wk"] });
+    d("yr", "365.25 day", { aliases: ["year"] });
+    g("Area");
+    d("ha", "10000 m^2", { aliases: ["hectare"] });
+    d("acre", "4046.8564224 m^2", { aliases: ["acres"] });
+    g("Volume");
+    d("L", "0.001 m^3", { ...SI, aliases: ["litre", "liter"] });
+    d("gal", "231 in^3", { aliases: ["gallon"] });
+    d("qt", "1/4 gal", { aliases: ["quart"] });
+    d("pt", "1/2 qt", { aliases: ["pint"] });
+    d("cup", "1/2 pt", { aliases: ["cups"] });
+    d("floz", "1/8 cup", { aliases: ["fluid_ounce"] });
+    d("tbsp", "1/2 floz", { aliases: ["tablespoon"] });
+    d("tsp", "1/3 tbsp", { aliases: ["teaspoon"] });
+    g("Speed");
+    d("mph", "1 mi/h");
+    d("kph", "1 km/h");
+    d("kn", "1 nmi/h", { aliases: ["knot"] });
+    g("Frequency");
+    d("Hz", "1 1/s", { ...SI, aliases: ["hertz"] });
+    g("Force");
+    d("N", "1 kg*m/s^2", { ...SI, aliases: ["newton"] });
+    d("lbf", "9.80665 lb*m/s^2", { aliases: ["pound_force"] });
+    g("Energy");
+    d("J", "1 N*m", { ...SI, aliases: ["joule"] });
+    d("cal", "4.184 J", { ...SI, aliases: ["calorie"] });
+    d("eV", "1.602176634E-19 J", { ...SI, aliases: ["electronvolt"] });
+    d("Wh", "3600 J", SI);
+    g("Power");
+    d("W", "1 J/s", { ...SI, aliases: ["watt"] });
+    d("hp", "550 ft*lbf/s", { aliases: ["horsepower"] });
+    g("Pressure");
+    d("Pa", "1 N/m^2", { ...SI, aliases: ["pascal"] });
+    d("bar", "100000 Pa", SI);
+    d("atm", "101325 Pa", { aliases: ["atmosphere"] });
+    d("psi", "1 lbf/in^2");
+    d("Torr", "101325/760 Pa", { aliases: ["torr"] });
+    d("mmHg", "133.322387415 Pa");
+    g("Electricity");
+    d("C", "1 A*s", { ...SI, aliases: ["coulomb"] });
+    d("V", "1 W/A", { ...SI, aliases: ["volt"] });
+    d("Ω", "1 V/A", { ...SI, aliases: ["ohm"] });
+    d("F", "1 C/V", { ...SI, aliases: ["farad"] });
+    d("S", "1 A/V", { ...SI, aliases: ["siemens"] });
+    d("Wb", "1 V*s", { ...SI, aliases: ["weber"] });
+    d("T", "1 Wb/m^2", { ...SI, aliases: ["tesla"] });
+    d("H", "1 Wb/A", { ...SI, aliases: ["henry"] });
+    d("Ah", "3600 C", SI);
+    g("Temperature");
+    d("deltaK", { dimensions: { Temperature: 1 }, kind: "difference" });
+    const deltaDegC = d("deltaDegC", { dimensions: { Temperature: 1 }, kind: "difference" });
+    const deltaDegF = d("deltaDegF", { dimensions: { Temperature: 1 }, scale: new Rational(5n, 9n), kind: "difference" });
+    d("degC", { dimensions: { Temperature: 1 }, kind: "affine", offset: new Rational(27315n, 100n) }, { aliases: ["°C", "celsius"], differenceUnit: deltaDegC });
+    d("degF", { dimensions: { Temperature: 1 }, scale: new Rational(5n, 9n), kind: "affine", offset: new Rational(45967n, 180n) }, { aliases: ["°F", "fahrenheit"], differenceUnit: deltaDegF });
+    g("Angle");
+    d("deg", { dimensions: { Angle: 1 }, scale: new Rational(1n, 180n), piPower: 1 }, { aliases: ["°", "degree"] });
+    d("arcmin", "1/60 deg");
+    d("arcsec", "1/60 arcmin");
+    d("gon", { dimensions: { Angle: 1 }, scale: new Rational(1n, 200n), piPower: 1 }, { aliases: ["grad"] });
+    d("turn", { dimensions: { Angle: 1 }, scale: 2n, piPower: 1 }, { aliases: ["rev", "revolution"] });
+    d("rpm", "1 turn/min");
+    g("Information");
+    d("B", "8 bit", { prefixes: "SI+binary", aliases: ["byte", "bytes"] });
+    return system;
+  }
+  var units = standardCatalogue(new UnitSystem);
+  function Q(value, unit) {
+    return units.quantity(value, unit);
+  }
+  var constants = Object.freeze({
+    c: Q("299792458 m/s"),
+    h: Q("6.62607015E-34 J*s"),
+    e: Q("1.602176634E-19 C"),
+    kB: Q("1.380649E-23 J/K"),
+    NA: Q("6.02214076E23 1/mol"),
+    R: Q("1.380649E-23 J/K").multiply(Q("6.02214076E23 1/mol")),
+    g0: Q("9.80665 m/s^2"),
+    G: Q(new RationalInterval(parseScalarText("6.67415E-11"), parseScalarText("6.67445E-11")), "m^3/(kg*s^2)")
+  });
+
   // src/runtime/quantities.js
   function int3(value) {
     return new Integer(BigInt(value));
-  }
-  function rat(numerator, denominator = 1n) {
-    return denominator === 1n ? new Integer(numerator) : new Rational(numerator, denominator);
   }
   function stringValue4(value, label = "name") {
     if (typeof value === "string")
@@ -62788,126 +63693,9 @@ ${indentStr})`;
   function isScalar(value) {
     return isRationalScalar(value) || value instanceof RationalInterval || isExactValue(value);
   }
-  function isIntervalScalar(value) {
-    return value instanceof RationalInterval;
-  }
-  function addQuantityScalars(left, right) {
-    return isIntervalScalar(left) || isIntervalScalar(right) ? TypePromotion.add(left, right) : addScalars(left, right);
-  }
-  function subtractQuantityScalars(left, right) {
-    return isIntervalScalar(left) || isIntervalScalar(right) ? TypePromotion.subtract(left, right) : subtractScalars(left, right);
-  }
-  function multiplyQuantityScalars(left, right) {
-    return isIntervalScalar(left) || isIntervalScalar(right) ? TypePromotion.multiply(left, right) : multiplyScalars(left, right);
-  }
-  function divideQuantityScalars(left, right) {
-    return isIntervalScalar(left) || isIntervalScalar(right) ? TypePromotion.divide(left, right) : divideScalars(left, right);
-  }
-  function negateQuantityScalar(value) {
-    return isIntervalScalar(value) ? TypePromotion.negate(value) : negateScalar(value);
-  }
-  function powQuantityScalar(value, exponent) {
-    return isIntervalScalar(value) ? value.pow(integerExponent2(exponent)) : powScalar(value, exponent);
-  }
-  function cloneDimensions(dimensions = {}) {
-    return Object.fromEntries(Object.entries(dimensions).filter(([, exponent]) => exponent !== 0));
-  }
-  function combineDimensions(left, right, sign = 1) {
-    const dimensions = cloneDimensions(left);
-    for (const [name, exponent] of Object.entries(right)) {
-      const next = (dimensions[name] || 0) + sign * exponent;
-      if (next === 0)
-        delete dimensions[name];
-      else
-        dimensions[name] = next;
-    }
-    return dimensions;
-  }
-  function scaleDimensions(dimensions, exponent) {
-    return Object.fromEntries(Object.entries(dimensions).map(([name, power]) => [name, power * exponent]).filter(([, power]) => power !== 0));
-  }
-  function dimensionsEqual(left, right) {
-    const a = Object.entries(cloneDimensions(left)).sort();
-    const b = Object.entries(cloneDimensions(right)).sort();
-    return a.length === b.length && a.every(([name, exponent], index) => name === b[index][0] && exponent === b[index][1]);
-  }
-  function describeDimensions(dimensions) {
-    const entries = Object.entries(dimensions).sort();
-    return entries.length ? entries.map(([name, exponent]) => exponent === 1 ? name : `${name}^${exponent}`).join("*") : "Dimensionless";
-  }
-  function unitExt(name) {
-    return new Map([["key", { type: "string", value: name }], ["immutable", int3(1)]]);
-  }
-  function createUnit(name, options = {}) {
-    const symbol = options.symbol || name;
-    return Object.freeze({
-      type: "unit",
-      name,
-      symbol,
-      dimensions: cloneDimensions(options.dimensions),
-      scale: options.scale || int3(1),
-      offset: options.offset || int3(0),
-      affine: options.affine === true,
-      difference: options.difference === true,
-      differenceUnit: options.differenceUnit || null,
-      _ext: unitExt(name)
-    });
-  }
-  function isUnitValue(value) {
-    return value?.type === "unit" || value?.type === "unit_expr";
-  }
-  function factorKey(factor) {
-    return factor.name || factor.symbol;
-  }
-  function factorsFromUnit(unit) {
-    if (unit.type === "unit_expr")
-      return new Map(unit.factors);
-    return new Map([[unit, 1]]);
-  }
-  function createUnitExpr(dimensions, scale, factors) {
-    return {
-      type: "unit_expr",
-      dimensions: cloneDimensions(dimensions),
-      scale,
-      offset: int3(0),
-      affine: false,
-      factors: new Map([...factors.entries()].filter(([, exponent]) => exponent !== 0))
-    };
-  }
-  function ensureLinearUnit(unit) {
-    if (unit?.affine)
-      throw new Error(`Affine unit '${unit.symbol}' cannot be used in a compound unit expression`);
-  }
-  function multiplyUnits(left, right) {
-    ensureLinearUnit(left);
-    ensureLinearUnit(right);
-    const factors = factorsFromUnit(left);
-    for (const [factor, exponent] of factorsFromUnit(right)) {
-      const next = (factors.get(factor) || 0) + exponent;
-      if (next === 0)
-        factors.delete(factor);
-      else
-        factors.set(factor, next);
-    }
-    return createUnitExpr(combineDimensions(left.dimensions, right.dimensions), multiplyScalars(left.scale, right.scale), factors);
-  }
-  function divideUnits(left, right) {
-    ensureLinearUnit(left);
-    ensureLinearUnit(right);
-    const factors = factorsFromUnit(left);
-    for (const [factor, exponent] of factorsFromUnit(right)) {
-      const next = (factors.get(factor) || 0) - exponent;
-      if (next === 0)
-        factors.delete(factor);
-      else
-        factors.set(factor, next);
-    }
-    return createUnitExpr(combineDimensions(left.dimensions, right.dimensions, -1), divideScalars(left.scale, right.scale), factors);
-  }
-  function invertUnit(unit) {
-    ensureLinearUnit(unit);
-    const factors = new Map([...factorsFromUnit(unit)].map(([factor, exponent]) => [factor, -exponent]));
-    return createUnitExpr(scaleDimensions(unit.dimensions, -1), divideScalars(int3(1), unit.scale), factors);
+  var isInterval = (value) => value instanceof RationalInterval;
+
+  class ExactOrderError extends Error {
   }
   function integerExponent2(value) {
     if (value instanceof Integer)
@@ -62916,168 +63704,157 @@ ${indentStr})`;
       return value;
     throw new Error("Unit exponent must be an integer");
   }
+  var defaultPi = createDefaultExactCollection()?.entries?.get("pi") ?? null;
+  var rixScalars = Object.freeze({
+    isScalar,
+    from(value) {
+      if (isScalar(value))
+        return value;
+      throw new Error("A unit must be applied to an exact scalar value");
+    },
+    add: (a, b) => isInterval(a) || isInterval(b) ? TypePromotion.add(a, b) : addScalars(a, b),
+    subtract: (a, b) => isInterval(a) || isInterval(b) ? TypePromotion.subtract(a, b) : subtractScalars(a, b),
+    multiply: (a, b) => isInterval(a) || isInterval(b) ? TypePromotion.multiply(a, b) : multiplyScalars(a, b),
+    divide: (a, b) => isInterval(a) || isInterval(b) ? TypePromotion.divide(a, b) : divideScalars(a, b),
+    negate: (a) => isInterval(a) ? TypePromotion.negate(a) : negateScalar(a),
+    pow: (a, n) => isInterval(a) ? a.pow(n) : powScalar(a, int3(n)),
+    relation(a, b) {
+      if (isExactValue(a) || isExactValue(b)) {
+        if (equalScalars(a, b))
+          return Relation.EQUAL;
+        throw new ExactOrderError("Exact symbolic quantity expressions are not ordered");
+      }
+      return possibleRelations(a, b);
+    },
+    pi: (k) => defaultPi ? powScalar(defaultPi, int3(k)) : coreScalars.pi(k)
+  });
+  var RIX_SYSTEM = units.extend({ scalars: rixScalars });
+  var unitWrappers = new WeakMap;
+  function unitExt(name) {
+    return new Map([["key", { type: "string", value: name }], ["immutable", int3(1)]]);
+  }
+  function wrapUnit(core) {
+    let value = unitWrappers.get(core);
+    if (value)
+      return value;
+    value = core.isNamed ? Object.freeze({
+      type: "unit",
+      name: core.name,
+      symbol: core.name,
+      dimensions: core.dimensions,
+      core,
+      _ext: unitExt(core.name)
+    }) : Object.freeze({
+      type: "unit_expr",
+      name: core.toString(),
+      dimensions: core.dimensions,
+      core
+    });
+    unitWrappers.set(core, value);
+    return value;
+  }
+  function coreUnit(value) {
+    if (!isUnitValue(value))
+      throw new Error("Expected a Unit or UnitExpr");
+    return value.core;
+  }
+  function isUnitValue(value) {
+    return (value?.type === "unit" || value?.type === "unit_expr") && value.core instanceof Unit;
+  }
+  function multiplyUnits(left, right) {
+    return wrapUnit(coreUnit(left).multiply(coreUnit(right)));
+  }
+  function divideUnits(left, right) {
+    return wrapUnit(coreUnit(left).divide(coreUnit(right)));
+  }
+  function invertUnit(unit) {
+    return wrapUnit(coreUnit(unit).inverse());
+  }
   function powUnit(unit, exponentValue) {
-    ensureLinearUnit(unit);
-    const exponent = integerExponent2(exponentValue);
-    const factors = new Map([...factorsFromUnit(unit)].map(([factor, power]) => [factor, power * exponent]));
-    return createUnitExpr(scaleDimensions(unit.dimensions, exponent), powScalar(unit.scale, int3(exponent)), factors);
+    return wrapUnit(coreUnit(unit).pow(integerExponent2(exponentValue)));
+  }
+  function unitsEquivalent(left, right) {
+    return coreUnit(left).equals(coreUnit(right));
+  }
+  function formatUnit(unit) {
+    return coreUnit(unit).toString();
+  }
+  function wrapQuantity(core) {
+    let base;
+    return {
+      type: "quantity",
+      core,
+      displayUnit: wrapUnit(core.unit),
+      dimensions: core.dimensions,
+      affinePoint: core.point,
+      get baseMagnitude() {
+        if (base === undefined)
+          base = core.toBase().value;
+        return base;
+      }
+    };
+  }
+  function fromCore(result) {
+    return result instanceof Quantity ? wrapQuantity(result) : result;
+  }
+  function isQuantity(value) {
+    return value?.type === "quantity" && value.core instanceof Quantity;
+  }
+  function coreQuantity(value) {
+    if (!isQuantity(value))
+      throw new Error("Expected a quantity");
+    return value.core;
   }
   function constructQuantity(magnitude, unit) {
     if (!isScalar(magnitude))
       throw new Error("A unit must be applied to an exact scalar value");
     if (!isUnitValue(unit))
       throw new Error("Quantity construction requires a Unit or UnitExpr");
-    const scaled = multiplyQuantityScalars(magnitude, unit.scale);
-    const baseMagnitude = unit.affine ? addQuantityScalars(scaled, unit.offset) : scaled;
-    return {
-      type: "quantity",
-      baseMagnitude,
-      dimensions: cloneDimensions(unit.dimensions),
-      displayUnit: unit,
-      affinePoint: unit.affine === true
-    };
-  }
-  function isQuantity(value) {
-    return value?.type === "quantity";
+    return wrapQuantity(new Quantity(magnitude, unit.core, { system: RIX_SYSTEM }));
   }
   function displayMagnitude(quantity) {
-    const unit = quantity.displayUnit;
-    const shifted = unit.affine ? subtractQuantityScalars(quantity.baseMagnitude, unit.offset) : quantity.baseMagnitude;
-    return divideQuantityScalars(shifted, unit.scale);
+    return coreQuantity(quantity).value;
   }
   function convertQuantity(quantity, target) {
     if (!isQuantity(quantity))
       throw new Error("ConvertUnit expects a quantity");
     if (!isUnitValue(target))
       throw new Error("ConvertUnit target must be a Unit or UnitExpr");
-    if (!dimensionsEqual(quantity.dimensions, target.dimensions)) {
-      throw new Error(`Incompatible unit dimensions: ${describeDimensions(quantity.dimensions)} cannot convert to ${describeDimensions(target.dimensions)}`);
-    }
-    if (quantity.affinePoint && target.difference) {
-      throw new Error("Cannot convert an affine quantity point to a difference unit");
-    }
-    if (!quantity.affinePoint && target.affine) {
-      throw new Error("Cannot convert a quantity difference to an affine coordinate unit");
-    }
-    return {
-      ...quantity,
-      displayUnit: target,
-      affinePoint: quantity.affinePoint || target.affine === true
-    };
+    return wrapQuantity(quantity.core.to(target.core));
   }
   function addQuantities(left, right) {
-    if (!dimensionsEqual(left.dimensions, right.dimensions)) {
-      throw new Error(`Incompatible quantity dimensions for addition: ${describeDimensions(left.dimensions)} and ${describeDimensions(right.dimensions)}`);
-    }
-    if (left.affinePoint && right.affinePoint) {
-      throw new Error("Cannot add two affine quantity points; add a temperature difference instead");
-    }
-    const point = left.affinePoint ? left : right.affinePoint ? right : null;
-    return {
-      type: "quantity",
-      baseMagnitude: addQuantityScalars(left.baseMagnitude, right.baseMagnitude),
-      dimensions: cloneDimensions(left.dimensions),
-      displayUnit: point?.displayUnit || left.displayUnit,
-      affinePoint: Boolean(point)
-    };
+    return wrapQuantity(coreQuantity(left).add(coreQuantity(right)));
   }
   function subtractQuantities(left, right) {
-    if (!dimensionsEqual(left.dimensions, right.dimensions)) {
-      throw new Error(`Incompatible quantity dimensions for subtraction: ${describeDimensions(left.dimensions)} and ${describeDimensions(right.dimensions)}`);
-    }
-    if (!left.affinePoint && right.affinePoint) {
-      throw new Error("Cannot subtract an affine quantity point from a quantity difference");
-    }
-    const pointDifference = left.affinePoint && right.affinePoint;
-    const displayUnit = pointDifference ? left.displayUnit.differenceUnit || createUnit(`delta${left.displayUnit.symbol}`, {
-      symbol: `delta${left.displayUnit.symbol}`,
-      dimensions: left.dimensions,
-      scale: left.displayUnit.scale,
-      difference: true
-    }) : left.displayUnit;
-    return {
-      type: "quantity",
-      baseMagnitude: subtractQuantityScalars(left.baseMagnitude, right.baseMagnitude),
-      dimensions: cloneDimensions(left.dimensions),
-      displayUnit,
-      affinePoint: left.affinePoint && !pointDifference
-    };
+    return wrapQuantity(coreQuantity(left).subtract(coreQuantity(right)));
   }
-  function displayProduct(left, right, divide = false) {
-    return divide ? divideUnits(left, right) : multiplyUnits(left, right);
+  function negateQuantity(quantity) {
+    return wrapQuantity(coreQuantity(quantity).negate());
   }
   function multiplyQuantityValues(left, right) {
-    if (isQuantity(left) && isQuantity(right)) {
-      if (left.affinePoint || right.affinePoint)
-        throw new Error("Affine quantity points cannot be multiplied");
-      const dimensions = combineDimensions(left.dimensions, right.dimensions);
-      const baseMagnitude = multiplyQuantityScalars(left.baseMagnitude, right.baseMagnitude);
-      if (Object.keys(dimensions).length === 0)
-        return baseMagnitude;
-      return {
-        type: "quantity",
-        baseMagnitude,
-        dimensions,
-        displayUnit: displayProduct(left.displayUnit, right.displayUnit),
-        affinePoint: false
-      };
-    }
-    const quantity = isQuantity(left) ? left : right;
-    const scalar = isQuantity(left) ? right : left;
-    if (!isScalar(scalar))
+    if (isQuantity(left))
+      return fromCore(left.core.multiply(isQuantity(right) ? right.core : right));
+    if (!isQuantity(right))
       throw new Error("Quantity multiplication requires a scalar or quantity");
-    return { ...quantity, baseMagnitude: multiplyQuantityScalars(quantity.baseMagnitude, scalar) };
+    if (!isScalar(left))
+      throw new Error("Quantity multiplication requires a scalar or quantity");
+    return fromCore(right.core.multiply(left));
   }
   function divideQuantityValues(left, right) {
-    if (isQuantity(left) && isQuantity(right)) {
-      if (left.affinePoint || right.affinePoint)
-        throw new Error("Affine quantity points cannot be divided");
-      const dimensions = combineDimensions(left.dimensions, right.dimensions, -1);
-      const baseMagnitude = divideQuantityScalars(left.baseMagnitude, right.baseMagnitude);
-      if (Object.keys(dimensions).length === 0)
-        return baseMagnitude;
-      return {
-        type: "quantity",
-        baseMagnitude,
-        dimensions,
-        displayUnit: displayProduct(left.displayUnit, right.displayUnit, true),
-        affinePoint: false
-      };
+    if (isQuantity(left)) {
+      if (!isQuantity(right) && !isScalar(right))
+        throw new Error("Unsupported quantity division");
+      return fromCore(left.core.divide(isQuantity(right) ? right.core : right));
     }
-    if (isQuantity(left) && isScalar(right)) {
-      return { ...left, baseMagnitude: divideQuantityScalars(left.baseMagnitude, right) };
-    }
-    if (isScalar(left) && isQuantity(right)) {
-      if (right.affinePoint)
-        throw new Error("Cannot divide by an affine quantity point");
-      return {
-        type: "quantity",
-        baseMagnitude: divideQuantityScalars(left, right.baseMagnitude),
-        dimensions: scaleDimensions(right.dimensions, -1),
-        displayUnit: invertUnit(right.displayUnit),
-        affinePoint: false
-      };
-    }
+    if (isScalar(left) && isQuantity(right))
+      return fromCore(right.core.inverse().multiply(left));
     throw new Error("Unsupported quantity division");
   }
   function powQuantity(quantity, exponentValue) {
-    if (quantity.affinePoint)
-      throw new Error("Affine quantity points cannot be exponentiated");
-    const exponent = integerExponent2(exponentValue);
-    const dimensions = scaleDimensions(quantity.dimensions, exponent);
-    const magnitude = powQuantityScalar(quantity.baseMagnitude, int3(exponent));
-    if (Object.keys(dimensions).length === 0)
-      return magnitude;
-    return {
-      type: "quantity",
-      baseMagnitude: magnitude,
-      dimensions,
-      displayUnit: powUnit(quantity.displayUnit, int3(exponent)),
-      affinePoint: false
-    };
+    return fromCore(coreQuantity(quantity).pow(integerExponent2(exponentValue)));
   }
-  function negateQuantity(quantity) {
-    return { ...quantity, baseMagnitude: negateQuantityScalar(quantity.baseMagnitude) };
+  function relationMask(left, right) {
+    return coreQuantity(left).relation(coreQuantity(right));
   }
   function quantityRelation(left, right, operation) {
     if (!dimensionsEqual(left.dimensions, right.dimensions)) {
@@ -63085,16 +63862,19 @@ ${indentStr})`;
         return false;
       if (operation === "neq")
         return true;
-      throw new Error(`Incompatible quantity dimensions for ordering: ${describeDimensions(left.dimensions)} and ${describeDimensions(right.dimensions)}`);
     }
-    if (isExactValue(left.baseMagnitude) || isExactValue(right.baseMagnitude)) {
+    let mask;
+    try {
+      mask = relationMask(left, right);
+    } catch (error) {
+      if (!(error instanceof ExactOrderError))
+        throw error;
       if (operation === "eq")
-        return equalScalars(left.baseMagnitude, right.baseMagnitude);
+        return false;
       if (operation === "neq")
-        return !equalScalars(left.baseMagnitude, right.baseMagnitude);
-      throw new Error("Exact symbolic quantity expressions are not ordered");
+        return true;
+      throw error;
     }
-    const mask = possibleRelations(left.baseMagnitude, right.baseMagnitude);
     switch (operation) {
       case "eq":
         return mask === Relation.EQUAL ? true : (mask & Relation.EQUAL) === 0 ? false : UNDECIDED;
@@ -63112,179 +63892,58 @@ ${indentStr})`;
         throw new Error(`Unknown quantity relation '${operation}'`);
     }
   }
-  function unitsEquivalent(left, right) {
-    return dimensionsEqual(left.dimensions, right.dimensions) && left.affine === right.affine && equalScalars(left.scale, right.scale) && equalScalars(left.offset || int3(0), right.offset || int3(0));
-  }
-  function formatUnit(unit) {
-    if (unit.type === "unit")
-      return unit.symbol;
-    const numerator = [];
-    const denominator = [];
-    const factors = [...unit.factors.entries()].sort(([a], [b]) => factorKey(a).localeCompare(factorKey(b)));
-    for (const [factor, exponent] of factors) {
-      const target = exponent > 0 ? numerator : denominator;
-      const power = Math.abs(exponent);
-      target.push(power === 1 ? factor.symbol : `${factor.symbol}^${power}`);
-    }
-    if (numerator.length === 0 && denominator.length === 0)
-      return "1";
-    const top = numerator.length ? numerator.join("*") : "1";
-    return denominator.length ? `${top}/${denominator.join("*")}` : top;
-  }
   function formatQuantity(quantity, formatScalar) {
     const magnitude = formatScalar(displayMagnitude(quantity));
     const separator = /^-?\d+\/\d+$/.test(magnitude) ? " " : "";
     return `${magnitude}${separator}~[${formatUnit(quantity.displayUnit)}]`;
   }
-  function unitEntry(collection, name) {
+  var collectionSystems = new WeakMap;
+  function checkCollection(collection) {
     if (!collection || collection.type !== "map" || !(collection.entries instanceof Map)) {
       throw new Error("Active Units value must be a RiX map collection");
     }
-    const value = collection.entries.get(name);
-    if (!isUnitValue(value))
-      throw new Error(`Unknown unit '${name}'`);
-    return value;
   }
-  function parseUnitExpression(source, collection) {
-    const input = String(source).replace(/\s+/g, "");
-    let index = 0;
-    function parsePrimary() {
-      if (input[index] === "(") {
-        index++;
-        const value = parseProduct();
-        if (input[index] !== ")")
-          throw new Error(`Expected ')' in unit expression '${source}'`);
-        index++;
-        return value;
-      }
-      const match = /^[\p{L}_][\p{L}\p{N}_]*/u.exec(input.slice(index));
-      if (!match)
-        throw new Error(`Invalid unit expression '${source}' at character ${index + 1}`);
-      index += match[0].length;
-      return unitEntry(collection, match[0]);
+  function systemFor(collection) {
+    checkCollection(collection);
+    const cached = collectionSystems.get(collection.entries);
+    if (cached && cached.size === collection.entries.size)
+      return cached.system;
+    const system = new UnitSystem({ scalars: rixScalars });
+    for (const [key, value] of collection.entries) {
+      if (!isUnitValue(value))
+        continue;
+      const folded = key !== value.core.name && !CORE_KEYS.has(key);
+      system.register(String(key), value.core, { replace: true, prefixes: !folded });
     }
-    function parsePower() {
-      let value = parsePrimary();
-      if (input[index] === "^") {
-        index++;
-        const match = /^-?\d+/.exec(input.slice(index));
-        if (!match)
-          throw new Error(`Expected integer exponent in unit expression '${source}'`);
-        index += match[0].length;
-        value = powUnit(value, int3(match[0]));
-      }
-      return value;
-    }
-    function parseProduct() {
-      let value = parsePower();
-      while (input[index] === "*" || input[index] === "/") {
-        const operator = input[index++];
-        const right = parsePower();
-        value = operator === "*" ? multiplyUnits(value, right) : divideUnits(value, right);
-      }
-      return value;
-    }
-    if (!input)
-      throw new Error("Unit expression cannot be empty");
-    const result = parseProduct();
-    if (index !== input.length)
-      throw new Error(`Invalid trailing input in unit expression '${source}'`);
-    return result;
+    collectionSystems.set(collection.entries, { system, size: collection.entries.size });
+    return system;
+  }
+  function parseUnitExpression2(source, collection) {
+    return wrapUnit(systemFor(collection).parse(String(source)));
   }
   function defineUnitFromValue(nameValue, definition) {
     const name = stringValue4(nameValue, "Unit name");
+    const scratch = new UnitSystem({ scalars: rixScalars });
     if (isUnitValue(definition)) {
-      return createUnit(name, {
-        symbol: name,
-        dimensions: definition.dimensions,
-        scale: definition.scale
-      });
+      if (definition.core.kind === "affine")
+        throw new Error("DefineUnit expects a linear Unit or Quantity definition");
+      return wrapUnit(scratch.define(name, definition.core));
     }
     if (!isQuantity(definition) || definition.affinePoint) {
       throw new Error("DefineUnit expects a linear Unit or Quantity definition");
     }
-    return createUnit(name, {
-      symbol: name,
-      dimensions: definition.dimensions,
-      scale: definition.baseMagnitude
-    });
+    return wrapUnit(scratch.define(name, definition.core));
   }
-  function createDefaultUnitCollection(exactCollection = createDefaultExactCollection()) {
+  var CORE_KEYS = new Set(units.names());
+  function createDefaultUnitCollection() {
     const entries = new Map;
-    const add = (name, options, aliases = []) => {
-      const unit = createUnit(name, options);
-      entries.set(name, unit);
-      entries.set(name.toLowerCase(), unit);
-      entries.set(unit.symbol, unit);
-      entries.set(unit.symbol.toLowerCase(), unit);
-      for (const alias of aliases)
-        entries.set(alias, unit);
-      return unit;
-    };
-    const m = add("m", { dimensions: { Length: 1 } }, ["meter", "metre"]);
-    const s = add("s", { dimensions: { Time: 1 } }, ["second"]);
-    const kg = add("kg", { dimensions: { Mass: 1 } }, ["kilogram"]);
-    add("A", { dimensions: { Current: 1 } }, ["ampere"]);
-    add("deltaK", {
-      dimensions: { Temperature: 1 },
-      symbol: "deltaK",
-      difference: true
-    });
-    add("K", { dimensions: { Temperature: 1 }, symbol: "K" }, ["kelvin"]);
-    add("mol", { dimensions: { Amount: 1 } }, ["mole"]);
-    add("cd", { dimensions: { Luminosity: 1 } }, ["candela"]);
-    add("rad", { dimensions: { Angle: 1 } }, ["radian"]);
-    const pi = exactCollection?.entries?.get("pi");
-    if (pi) {
-      add("deg", {
-        dimensions: { Angle: 1 },
-        symbol: "deg",
-        scale: divideScalars(pi, int3(180))
-      }, ["degree"]);
-      add("turn", {
-        dimensions: { Angle: 1 },
-        symbol: "turn",
-        scale: multiplyScalars(int3(2), pi)
-      }, ["turns", "revolution"]);
+    for (const name of CORE_KEYS)
+      entries.set(name, wrapUnit(units.get(name)));
+    for (const name of CORE_KEYS) {
+      const lower = name.toLowerCase();
+      if (!entries.has(lower))
+        entries.set(lower, entries.get(name));
     }
-    add("min", { dimensions: s.dimensions, scale: int3(60), symbol: "min" }, ["minute"]);
-    add("h", { dimensions: s.dimensions, scale: int3(3600), symbol: "h" }, ["hour"]);
-    add("day", { dimensions: s.dimensions, scale: int3(86400), symbol: "day" });
-    add("km", { dimensions: m.dimensions, scale: int3(1000), symbol: "km" }, ["kilometer", "kilometre"]);
-    add("cm", { dimensions: m.dimensions, scale: rat(1n, 100n), symbol: "cm" });
-    add("mm", { dimensions: m.dimensions, scale: rat(1n, 1000n), symbol: "mm" });
-    add("in", { dimensions: m.dimensions, scale: rat(127n, 5000n), symbol: "in" }, ["inch"]);
-    add("ft", { dimensions: m.dimensions, scale: rat(381n, 1250n), symbol: "ft" }, ["foot"]);
-    add("yd", { dimensions: m.dimensions, scale: rat(1143n, 1250n), symbol: "yd" }, ["yard"]);
-    add("mi", { dimensions: m.dimensions, scale: rat(201168n, 125n), symbol: "mi" }, ["mile"]);
-    add("Hz", { dimensions: { Time: -1 }, symbol: "Hz" }, ["hertz"]);
-    add("N", { dimensions: { Mass: 1, Length: 1, Time: -2 }, symbol: "N" }, ["newton"]);
-    add("J", { dimensions: { Mass: 1, Length: 2, Time: -2 }, symbol: "J" }, ["joule"]);
-    add("W", { dimensions: { Mass: 1, Length: 2, Time: -3 }, symbol: "W" }, ["watt"]);
-    add("Pa", { dimensions: { Mass: 1, Length: -1, Time: -2 }, symbol: "Pa" }, ["pascal"]);
-    const deltaDegC = add("deltaDegC", { dimensions: { Temperature: 1 }, symbol: "deltaDegC", difference: true });
-    const deltaDegF = add("deltaDegF", {
-      dimensions: { Temperature: 1 },
-      symbol: "deltaDegF",
-      difference: true,
-      scale: rat(5n, 9n)
-    });
-    add("degC", {
-      dimensions: { Temperature: 1 },
-      symbol: "degC",
-      affine: true,
-      scale: int3(1),
-      offset: rat(27315n, 100n),
-      differenceUnit: deltaDegC
-    }, ["celsius"]);
-    add("degF", {
-      dimensions: { Temperature: 1 },
-      symbol: "degF",
-      affine: true,
-      scale: rat(5n, 9n),
-      offset: rat(45967n, 180n),
-      differenceUnit: deltaDegF
-    }, ["fahrenheit"]);
     return {
       type: "map",
       entries,
@@ -63961,7 +64620,7 @@ ${indentStr})`;
     const integer = integerValue(value);
     return integer === null ? null : new Fraction(integer, 1n);
   }
-  function isZero2(value) {
+  function isZero3(value) {
     value = semanticLiteralValue(value);
     if (value instanceof Integer)
       return value.value === 0n;
@@ -64041,9 +64700,9 @@ ${indentStr})`;
   function applyAdd(left, right) {
     left = semanticLiteralValue(left);
     right = semanticLiteralValue(right);
-    if (isZero2(left))
+    if (isZero3(left))
       return right;
-    if (isZero2(right))
+    if (isZero3(right))
       return left;
     if (left instanceof Integer && right instanceof Integer)
       return left.add(right);
@@ -64071,7 +64730,7 @@ ${indentStr})`;
   function applySubtract(left, right) {
     left = semanticLiteralValue(left);
     right = semanticLiteralValue(right);
-    if (isZero2(right))
+    if (isZero3(right))
       return left;
     if (left instanceof Integer && right instanceof Integer)
       return left.subtract(right);
@@ -64099,7 +64758,7 @@ ${indentStr})`;
   function applyMultiply(left, right) {
     left = semanticLiteralValue(left);
     right = semanticLiteralValue(right);
-    if (isZero2(left) || isZero2(right))
+    if (isZero3(left) || isZero3(right))
       return new Integer(0n);
     if (isOne2(left))
       return right;
@@ -64119,7 +64778,7 @@ ${indentStr})`;
   function applyDivide(left, right) {
     left = semanticLiteralValue(left);
     right = semanticLiteralValue(right);
-    if (isZero2(right))
+    if (isZero3(right))
       throw new Error("Structural division by zero");
     if (isOne2(right))
       return left;
@@ -64379,21 +65038,21 @@ ${indentStr})`;
     return integer === null ? null : integer;
   }
   function componentAdd(left, right, mode) {
-    if (isZero2(left))
+    if (isZero3(left))
       return right;
-    if (isZero2(right))
+    if (isZero3(right))
       return left;
     return mode === "apply" ? applyStructuralBinary("+", left, right) : structuralForm("Sum", [left, right], "construct", combinedSpan(left, right));
   }
   function componentSubtract(left, right, mode) {
-    if (isZero2(right))
+    if (isZero3(right))
       return left;
-    if (isZero2(left))
+    if (isZero3(left))
       return componentNegate(right, mode);
     return mode === "apply" ? applyStructuralBinary("-", left, right) : structuralForm("Difference", [left, right], "construct", combinedSpan(left, right));
   }
   function componentMultiply(left, right, mode) {
-    if (isZero2(left) || isZero2(right))
+    if (isZero3(left) || isZero3(right))
       return new Integer(0n);
     if (isOne2(left))
       return right;
@@ -64402,7 +65061,7 @@ ${indentStr})`;
     return mode === "apply" ? applyStructuralBinary("*", left, right) : structuralForm("Product", [left, right], "construct", combinedSpan(left, right));
   }
   function componentNegate(value, mode) {
-    if (isZero2(value))
+    if (isZero3(value))
       return value;
     if (value instanceof Integer)
       return value.negate();
@@ -64619,7 +65278,7 @@ ${indentStr})`;
       return state.components[0];
     if (!state.usesBasis)
       return state.components[0];
-    const onlyReal = state.components.slice(1).every(isZero2);
+    const onlyReal = state.components.slice(1).every(isZero3);
     if (state.mode === "apply" && onlyReal)
       return state.components[0];
     return structuralAlgebra(profile, state.components, state.mode, structuralSourceSpan(value));
@@ -64727,7 +65386,7 @@ ${indentStr})`;
     if (isStructuralLiteral(value))
       return structuralValueToIr(value.value);
     if (isStructuralAlgebra(value)) {
-      if (value.components.slice(1).every(isZero2))
+      if (value.components.slice(1).every(isZero3))
         return structuralValueToIr(value.components[0]);
       throw new Error(`Structural ${value.profile} form cannot be represented by scalar symbolic IR`);
     }
@@ -64839,7 +65498,7 @@ ${indentStr})`;
     }
     if (isStructuralAlgebra(value)) {
       const components = value.components.map((component) => collapseStructuralValue(component, context));
-      if (components.slice(1).every(isZero2))
+      if (components.slice(1).every(isZero3))
         return components[0];
       const profile = createStructuralAlgebraProfile(value.profile, value.basis, {
         cayleyDickson: ["Complex", "Quaternion", "Octonion"].includes(value.profile)
@@ -65585,7 +66244,7 @@ ${indentStr})`;
   function rationalToIr(value) {
     return value.denominator === 1n ? literal(value.numerator) : ir("DIV", literal(value.numerator), literal(value.denominator));
   }
-  function isZero3(node) {
+  function isZero4(node) {
     const value = rationalFromIr(node);
     return Boolean(value && value.numerator === 0n);
   }
@@ -65599,19 +66258,19 @@ ${indentStr})`;
   }
   function binary(fn, left, right) {
     if (fn === "ADD") {
-      if (isZero3(left))
+      if (isZero4(left))
         return right;
-      if (isZero3(right))
+      if (isZero4(right))
         return left;
     }
     if (fn === "SUB") {
-      if (isZero3(right))
+      if (isZero4(right))
         return left;
-      if (isZero3(left))
+      if (isZero4(left))
         return neg(right);
     }
     if (fn === "MUL") {
-      if (isZero3(left) || isZero3(right))
+      if (isZero4(left) || isZero4(right))
         return literal(0);
       if (isOne3(left))
         return right;
@@ -65619,13 +66278,13 @@ ${indentStr})`;
         return left;
     }
     if (fn === "DIV") {
-      if (isZero3(left))
+      if (isZero4(left))
         return literal(0);
       if (isOne3(right))
         return left;
     }
     if (fn === "POW") {
-      if (isZero3(right))
+      if (isZero4(right))
         return literal(1);
       if (isOne3(right))
         return left;
@@ -66046,7 +66705,7 @@ ${indentStr})`;
     for (const [power, coefficient] of right) {
       const incoming = subtract ? neg(cloneIr(coefficient)) : cloneIr(coefficient);
       result.set(power, result.has(power) ? binary("ADD", result.get(power), incoming) : incoming);
-      if (isZero3(result.get(power)))
+      if (isZero4(result.get(power)))
         result.delete(power);
     }
     return result;
@@ -66058,7 +66717,7 @@ ${indentStr})`;
         const power = leftPower + rightPower;
         const coefficient = binary("MUL", cloneIr(leftCoefficient), cloneIr(rightCoefficient));
         result.set(power, result.has(power) ? binary("ADD", result.get(power), coefficient) : coefficient);
-        if (isZero3(result.get(power)))
+        if (isZero4(result.get(power)))
           result.delete(power);
       }
     }
@@ -66175,7 +66834,7 @@ ${indentStr})`;
         }
         const existing = remainder.get(targetPower) || literal(0);
         const next = binary("SUB", existing, binary("MUL", cloneIr(coefficient), cloneIr(divisorCoefficient)));
-        if (isZero3(next))
+        if (isZero4(next))
           remainder.delete(targetPower);
         else
           remainder.set(targetPower, next);
@@ -66244,7 +66903,7 @@ ${indentStr})`;
     let expression = null;
     for (let index = 0;index < remainders.length; index++) {
       const remainder = polynomialToIr(remainders[index], retrieve(variable));
-      if (isZero3(remainder))
+      if (isZero4(remainder))
         continue;
       const term = signedTerm(remainder, base.expression, BigInt(index));
       if (expression === null)
@@ -71533,7 +72192,7 @@ ${indented.join(`,
     }
     throw new Error(`Unsupported Calculus expression kind ${String(kind)}`);
   }
-  function exactRational2(value) {
+  function exactRational3(value) {
     if (value instanceof Rational)
       return value;
     if (value instanceof Integer)
@@ -71543,7 +72202,7 @@ ${indented.join(`,
     return null;
   }
   function graphConstant(value) {
-    const rational = exactRational2(value);
+    const rational = exactRational3(value);
     if (!rational)
       throw new Error("nonRationalGraphConstant");
     const exact = rational.denominator === 1n ? new Integer(rational.numerator) : rational;
@@ -71876,7 +72535,7 @@ ${indented.join(`,
   function exactGraphValue(expression, value) {
     if (!isExpression(expression) || expressionKind(expression) !== "constant")
       return false;
-    const actual = exactRational2(mapValue2(expression, "value"));
+    const actual = exactRational3(mapValue2(expression, "value"));
     return actual?.equals(new Rational(value)) === true;
   }
   function graphNegate(value) {
@@ -72648,7 +73307,7 @@ ${indented.join(`,
   function recognizeRationalGraphNode(expression, variable, budget) {
     const kind = expressionKind(expression);
     if (kind === "constant") {
-      const value = exactRational2(mapValue2(expression, "value"));
+      const value = exactRational3(mapValue2(expression, "value"));
       if (!value)
         throw new Error("nonRationalGraphConstant");
       return rationalGraphValue([value], undefined, [], budget);
@@ -73448,7 +74107,7 @@ ${indented.join(`,
     maxComponents: 1e4,
     maxPolynomialDegree: 256
   });
-  function exactRational3(value) {
+  function exactRational4(value) {
     if (value instanceof Rational)
       return value;
     if (value instanceof Integer)
@@ -73460,7 +74119,7 @@ ${indented.join(`,
   function normalizePolynomial2(value) {
     if (!Array.isArray(value) || value.length === 0)
       throw new Error("invalidPolynomial");
-    const polynomial = value.map(exactRational3);
+    const polynomial = value.map(exactRational4);
     while (polynomial.length > 1 && polynomial.at(-1).equals(Rational.zero))
       polynomial.pop();
     return polynomial;
@@ -73519,7 +74178,7 @@ ${indented.join(`,
     return Array.isArray(left) && left.length === right.length && left.every((polynomial, index) => samePolynomial(polynomial, right[index]));
   }
   function polynomialSignAt(polynomial, point) {
-    const x = exactRational3(point);
+    const x = exactRational4(point);
     let value = Rational.zero;
     for (let index = polynomial.length - 1;index >= 0; index -= 1) {
       value = value.multiply(x).add(polynomial[index]);
@@ -73724,7 +74383,7 @@ ${indented.join(`,
       ...value,
       parent: asSet(value.parent),
       pieces: value.pieces.map(asSet),
-      roots: (value.roots || []).map(exactRational3)
+      roots: (value.roots || []).map(exactRational4)
     };
   }
   function rangeCoverFact(value) {
@@ -74515,7 +75174,7 @@ ${indented.join(`,
       return BigInt(value);
     return fallback;
   }
-  function exactRational4(value) {
+  function exactRational5(value) {
     if (value instanceof Rational)
       return value;
     if (value instanceof Integer)
@@ -74879,7 +75538,7 @@ ${indented.join(`,
   function affineEvaluate(expression, box, state, conventions) {
     const kind = expressionKind2(expression);
     if (kind === "constant") {
-      const value = exactRational4(mapValue3(expression, "value"));
+      const value = exactRational5(mapValue3(expression, "value"));
       if (!value)
         throw new Error("affineRequiresExactRationalConstants");
       return affineForm(value);
@@ -74908,7 +75567,7 @@ ${indented.join(`,
       throw new Error("affineOperatorArity");
     const left = affineEvaluate(operands[0], box, state, conventions);
     if (operation === "power") {
-      const exponent = expressionKind2(operands[1]) === "constant" ? exactRational4(mapValue3(operands[1], "value")) : null;
+      const exponent = expressionKind2(operands[1]) === "constant" ? exactRational5(mapValue3(operands[1], "value")) : null;
       if (!exponent || exponent.denominator !== 1n || exponent.numerator < 0n || exponent.numerator > 32n) {
         throw new Error("affinePowerRequiresSmallNonnegativeInteger");
       }
@@ -75495,7 +76154,7 @@ ${indented.join(`,
   var VALIDATED_BOX_CHECKER = "rix.runtime.validated-box-checker@1";
   var MAX_RATIONAL_DIGITS = 4096;
   var MAX_REPLAY_TEXT = 16 * 1024 * 1024;
-  var ZERO2 = Rational.zero;
+  var ZERO3 = Rational.zero;
   var point2 = (value) => new RationalInterval(rational2(value, "intervalPoint"), value);
   var seq2 = (value) => Array.isArray(value) ? value : Array.isArray(value?.values) ? value.values : null;
   var text12 = (value) => typeof value === "string" ? value : value?.type === "string" ? value.value : null;
@@ -75570,16 +76229,16 @@ ${indented.join(`,
     return rows.map((row) => seq2(row).map((entry) => interval4(entry, label)));
   }
   var midpoint2 = (value) => value.low.add(value.high).divide(new Rational(2));
-  var containsZero = (value) => !value.low.greaterThan(ZERO2) && !value.high.lessThan(ZERO2);
+  var containsZero = (value) => !value.low.greaterThan(ZERO3) && !value.high.lessThan(ZERO3);
   var add2 = (a, b) => interval4(a.add(b), "sum");
   var sub = (a, b) => interval4(a.subtract(b), "difference");
   var mul = (a, b) => interval4(a.multiply(b), "product");
   var div = (a, b) => interval4(a.divide(b), "quotient");
-  var sum = (values) => values.reduce(add2, point2(ZERO2));
+  var sum = (values) => values.reduce(add2, point2(ZERO3));
   var norm = (rows) => rows.reduce((largest, row) => {
-    const total = row.reduce((a, b) => a.add(b.abs()), ZERO2);
+    const total = row.reduce((a, b) => a.add(b.abs()), ZERO3);
     return total.greaterThan(largest) ? total : largest;
-  }, ZERO2);
+  }, ZERO3);
   var freeze = (value) => Object.freeze(value);
   function optionsObject(value) {
     const entries = value instanceof Map ? value : value?.entries instanceof Map ? value.entries : new Map(Object.entries(value || {}));
@@ -75630,7 +76289,7 @@ ${indented.join(`,
     const inverseMidpoint = invertRationalMatrix(midpointMatrix);
     const condition = inverseMidpoint ? rational2(norm(midpointMatrix).multiply(norm(inverseMidpoint)), "conditionEstimate") : null;
     const threshold = rational2(field3(options, "illConditionThreshold", new Rational(1e8)), "illConditionThreshold");
-    if (!threshold.greaterThan(ZERO2))
+    if (!threshold.greaterThan(ZERO3))
       throw new Error("illConditionThresholdMustBePositive");
     const diagnostics = condition?.greaterThan(threshold) ? ["illConditionedMidpointMatrix"] : [];
     const rows = preconditioner.map((row) => Array.from({ length: n }, (_, column) => sum(row.map((entry, k) => mul(point2(entry), A[k][column])))));
@@ -75664,7 +76323,7 @@ ${indented.join(`,
         for (let j = column + 1;j < n; j += 1)
           rows[row][j] = sub(rows[row][j], mul(factor, rows[column][j]));
         right[row] = sub(right[row], mul(factor, right[column]));
-        rows[row][column] = point2(ZERO2);
+        rows[row][column] = point2(ZERO3);
         eliminations += 1;
         stages.push({ column: column + 1, row: row + 1, factor, before, beforeRhs, after: [...rows[row]], afterRhs: right[row] });
       }
@@ -75762,7 +76421,7 @@ ${indented.join(`,
         try {
           const check = checkedSystemBoxData(expressions, jacobian, candidate, graphOptions, conventions);
           graphEvaluations += check.graphEvaluations;
-          if (check.functionRange.every((entry) => entry.low.equals(ZERO2) && entry.high.equals(ZERO2)))
+          if (check.functionRange.every((entry) => entry.low.equals(ZERO3) && entry.high.equals(ZERO3)))
             boundaryRoot = image.map((entry) => entry.low);
         } catch {}
       }
@@ -75807,8 +76466,8 @@ ${indented.join(`,
   function subdivisionOptions(options) {
     const maxBoxes = count(field3(options, "maxBoxes", field3(options, "maxWork")), 64, 4096, "maxBoxes");
     const maxDepth = count(field3(options, "maxDepth"), 20, 128, "maxDepth");
-    const minWidth = rational2(field3(options, "minWidth", ZERO2), "minWidth");
-    if (minWidth.lessThan(ZERO2))
+    const minWidth = rational2(field3(options, "minWidth", ZERO3), "minWidth");
+    if (minWidth.lessThan(ZERO3))
       throw new Error("minWidthMustBeNonnegative");
     const method = text12(field3(options, "method", "intervalNewton"));
     if (!["intervalNewton", "krawczyk"].includes(method))
@@ -76369,7 +77028,7 @@ ${indented.join(`,
       throw new Error(`${label}OutOfRange`);
     return Number(n.numerator);
   }
-  function normalize2(view) {
+  function normalize3(view) {
     if (outputValueKind(view) === "graphic")
       return { graphic: view, snapshot: null };
     if (text13(field5(view, "schema")) === "rix.scene3d.snapshot@1" && outputValueKind(field5(view, "value")) === "graphic")
@@ -76384,7 +77043,7 @@ ${indented.join(`,
     const gap = exact4(field5(options, "gap", new Integer(16n)), "linkedGap");
     if (gap.lessThan(Rational.zero))
       throw new Error("linkedGapMustBeNonnegative");
-    const input = views.map(normalize2);
+    const input = views.map(normalize3);
     const serialize = createFrameSerializer();
     const snapshotMetadata = (snapshot) => snapshot ? map5(["schema", "source", "uncertainty", "diagnostics"].map((key) => [key, field5(snapshot, key)])) : null;
     for (const { graphic, snapshot } of input) {
@@ -81087,7 +81746,7 @@ ${indented.join(`,
     }
     return number;
   }
-  function exactRational5(value, label) {
+  function exactRational6(value, label) {
     if (value instanceof Rational)
       return value;
     if (value instanceof Integer)
@@ -81190,7 +81849,7 @@ ${indented.join(`,
     }
     return JSON.stringify(value);
   }
-  function isInterval(value) {
+  function isInterval2(value) {
     if (!value || typeof value !== "object")
       return false;
     if (value instanceof RationalInterval)
@@ -81799,7 +82458,7 @@ ${indented.join(`,
       ensureSequence(target, "Move!");
       const len = target.values.length;
       let s, e;
-      if (isInterval(rangeOrIdx)) {
+      if (isInterval2(rangeOrIdx)) {
         const range = getIntervalRange(rangeOrIdx, len);
         s = range.start;
         e = range.end;
@@ -82587,7 +83246,7 @@ ${indented.join(`,
         throw new Error("Convergent index must be at least 1");
       return target.getConvergent(oneBasedIndex - 1);
     }),
-    APPROXIMATIONERROR: method5("ApproximationError", ([target, other]) => target.approximationError(exactRational5(other, "Approximation target"))),
+    APPROXIMATIONERROR: method5("ApproximationError", ([target, other]) => target.approximationError(exactRational6(other, "Approximation target"))),
     BESTAPPROXIMATION: method5("BestApproximation", ([target, maxDenominator]) => target.bestApproximation(exactBigInt(maxDenominator, "Maximum denominator"))),
     BESTCONVERGENT: method5("BestConvergent", ([target, maxDenominator]) => target.bestConvergent(exactBigInt(maxDenominator, "Maximum denominator"))),
     BITLENGTH: method5("BitLength", ([target]) => int6(target.bitLength())),
@@ -82606,7 +83265,7 @@ ${indented.join(`,
     RECIPROCAL: method5("Reciprocal", ([target]) => target.reciprocate()),
     OVERLAPS: method5("Overlaps", ([target, other]) => bool3(target.overlaps(exactInterval(other, "Other interval")))),
     CONTAINS: method5("Contains", ([target, other]) => bool3(target.contains(exactInterval(other, "Contained interval")))),
-    CONTAINSVALUE: method5("ContainsValue", ([target, value]) => bool3(target.containsValue(exactRational5(value, "Contained value")))),
+    CONTAINSVALUE: method5("ContainsValue", ([target, value]) => bool3(target.containsValue(exactRational6(value, "Contained value")))),
     CONTAINSZERO: method5("ContainsZero", ([target]) => bool3(target.containsZero())),
     INTERSECTION: method5("Intersection", ([target, other]) => attachBuiltinProto(RationalIntervalSet.fromInterval(target).intersection(exactRangeSet(other, "Other range")))),
     UNION: method5("Union", ([target, other]) => attachBuiltinProto(RationalIntervalSet.fromInterval(target).union(exactRangeSet(other, "Other range")))),
@@ -82661,7 +83320,7 @@ ${indented.join(`,
     UNION: method5("Union", ([target, other]) => attachBuiltinProto(target.union(exactRangeSet(other, "Other range")))),
     INTERSECTION: method5("Intersection", ([target, other]) => attachBuiltinProto(target.intersection(exactRangeSet(other, "Other range")))),
     CONTAINS: method5("Contains", ([target, other]) => bool3(target.contains(exactRangeSet(other, "Contained range")))),
-    CONTAINSVALUE: method5("ContainsValue", ([target, value]) => bool3(target.containsValue(exactRational5(value, "Contained value")))),
+    CONTAINSVALUE: method5("ContainsValue", ([target, value]) => bool3(target.containsValue(exactRational6(value, "Contained value")))),
     HULL: method5("Hull", ([target]) => attachBuiltinProto(target.hull())),
     ADD: method5("Add", ([target, other], context) => attachBuiltinProto(executeRangeOperation("add", [target, other], context))),
     SUBTRACT: method5("Subtract", ([target, other], context) => attachBuiltinProto(executeRangeOperation("subtract", [target, other], context))),
@@ -91437,7 +92096,7 @@ ${indented.join(`,
 
   // src/eval/functions/piecewise.js
   var PIECE_BUDGET = 1e4;
-  var ZERO3 = new Rational(0n, 1n);
+  var ZERO4 = new Rational(0n, 1n);
   var TWO = new Rational(2n, 1n);
   function toQ(value) {
     if (value instanceof Rational)
@@ -91759,12 +92418,12 @@ ${indented.join(`,
           if (!lineInfo)
             return [null, null];
           const { slope, base } = lineInfo;
-          if (slope.equals(ZERO3)) {
+          if (slope.equals(ZERO4)) {
             const ok = side === "below" ? cmp(base, x) <= 0 : cmp(base, x) >= 0;
             return ok ? [null, null] : "empty";
           }
           const t = x.subtract(base).divide(slope);
-          const positive = cmp(slope, ZERO3) > 0;
+          const positive = cmp(slope, ZERO4) > 0;
           if (side === "below" === positive)
             return [null, floorQ(t)];
           return [ceilQ(t), null];
@@ -98690,26 +99349,26 @@ ${pad}}`;
       return new Rational(BigInt(value), 1n);
     throw new Error(`${label} must have exact integer or rational coefficients`);
   }
-  var isZero4 = (value) => value.numerator === 0n;
-  function normalize3(valuesList, label = "Polynomial coefficients") {
+  var isZero5 = (value) => value.numerator === 0n;
+  function normalize4(valuesList, label = "Polynomial coefficients") {
     if (valuesList.length === 0)
       throw new Error(`${label} cannot be empty`);
     const exact = valuesList.map((value, index) => rational5(value, `${label} ${index + 1}`));
-    const first = exact.findIndex((value) => !isZero4(value));
+    const first = exact.findIndex((value) => !isZero5(value));
     return first < 0 ? [zero3()] : exact.slice(first);
   }
   function coefficientsEqual(left, right) {
     return left.length === right.length && left.every((value, index) => value.equals(right[index]));
   }
   function scale(valuesList, divisor) {
-    return normalize3(valuesList.map((value) => value.divide(divisor)));
+    return normalize4(valuesList.map((value) => value.divide(divisor)));
   }
   function divideWithRemainder(dividend, divisor) {
-    const a = normalize3(dividend);
-    const b = normalize3(divisor);
-    if (b.length === 1 && isZero4(b[0]))
+    const a = normalize4(dividend);
+    const b = normalize4(divisor);
+    if (b.length === 1 && isZero5(b[0]))
       throw new Error("Rational-function denominator cannot be the zero polynomial");
-    if (a.length < b.length || a.length === 1 && isZero4(a[0]))
+    if (a.length < b.length || a.length === 1 && isZero5(a[0]))
       return { quotient: [zero3()], remainder: a };
     const difference = a.length - b.length;
     const quotient = Array.from({ length: difference + 1 }, zero3);
@@ -98722,12 +99381,12 @@ ${pad}}`;
       }
     }
     const tail = working.slice(difference + 1);
-    return { quotient: normalize3(quotient), remainder: normalize3(tail.length ? tail : [zero3()]) };
+    return { quotient: normalize4(quotient), remainder: normalize4(tail.length ? tail : [zero3()]) };
   }
   function gcd5(left, right) {
-    let a = normalize3(left);
-    let b = normalize3(right);
-    while (!(b.length === 1 && isZero4(b[0]))) {
+    let a = normalize4(left);
+    let b = normalize4(right);
+    while (!(b.length === 1 && isZero5(b[0]))) {
       const remainder = divideWithRemainder(a, b).remainder;
       a = b;
       b = remainder;
@@ -98736,17 +99395,17 @@ ${pad}}`;
   }
   function exactQuotient(dividend, divisor) {
     const result = divideWithRemainder(dividend, divisor);
-    if (!(result.remainder.length === 1 && isZero4(result.remainder[0]))) {
+    if (!(result.remainder.length === 1 && isZero5(result.remainder[0]))) {
       throw new Error("Internal rational-function normalization produced a nonzero gcd remainder");
     }
     return result.quotient;
   }
   function canonicalPair(numerator, denominator) {
-    let n = normalize3(numerator, "Rational-function numerator coefficients");
-    let d = normalize3(denominator, "Rational-function denominator coefficients");
-    if (d.length === 1 && isZero4(d[0]))
+    let n = normalize4(numerator, "Rational-function numerator coefficients");
+    let d = normalize4(denominator, "Rational-function denominator coefficients");
+    if (d.length === 1 && isZero5(d[0]))
       throw new Error("Rational-function denominator cannot be the zero polynomial");
-    if (n.length === 1 && isZero4(n[0]))
+    if (n.length === 1 && isZero5(n[0]))
       return { numerator: [zero3()], denominator: [one2()], cancelledDegree: d.length - 1 };
     const common = gcd5(n, d);
     n = exactQuotient(n, common);
@@ -98759,7 +99418,7 @@ ${pad}}`;
     };
   }
   function polynomialValue(coefficients, variable, context, evaluate) {
-    return createPolynomial([seq9(normalize3(coefficients)), str6(variable)], context, evaluate);
+    return createPolynomial([seq9(normalize4(coefficients)), str6(variable)], context, evaluate);
   }
   function extensionValue2(value, name) {
     const requested = String(name).toLowerCase();
@@ -98833,7 +99492,7 @@ ${pad}}`;
     return value;
   }
   function exactPolynomialCoefficients(polynomial, context, evaluate, label) {
-    return normalize3(polynomialCoefficients(requirePolynomial(polynomial, label), context, evaluate), `${label} coefficients`);
+    return normalize4(polynomialCoefficients(requirePolynomial(polynomial, label), context, evaluate), `${label} coefficients`);
   }
   function polynomialFromValue(value, variable, context, evaluate) {
     if (isPolynomial(value)) {
@@ -100721,7 +101380,7 @@ ${pad}}`;
     }
     return value;
   }
-  function exactRational6(value, label) {
+  function exactRational7(value, label) {
     if (value instanceof Rational)
       return value;
     if (value instanceof Integer)
@@ -100788,7 +101447,7 @@ ${pad}}`;
       }, values[0]);
     }
     const intervalSource = relation.columns[spec.sourceIndex].type === "Interval";
-    const total = values.reduce((sum, value) => sum.add(intervalSource ? value : exactRational6(value, `data.Aggregate ${spec.op}`)), new Rational(0n, 1n));
+    const total = values.reduce((sum, value) => sum.add(intervalSource ? value : exactRational7(value, `data.Aggregate ${spec.op}`)), new Rational(0n, 1n));
     return collapseRational(spec.op === "mean" ? total.divide(new Rational(BigInt(values.length), 1n)) : total);
   }
   function aggregateGroups(args) {
@@ -101008,7 +101667,7 @@ ${pad}}`;
       const endpoints = value.$intervalDirected.map((item) => taggedExact(item, label));
       if (endpoints.some((item) => !(item instanceof Integer || item instanceof Rational)))
         throw new Error(`${label} invalid directed endpoint`);
-      return new RationalInterval(...endpoints.map((item) => exactRational6(item, label)));
+      return new RationalInterval(...endpoints.map((item) => exactRational7(item, label)));
     }
     if (keys[0] === "$interval") {
       if (!Array.isArray(value.$interval) || value.$interval.length !== 2) {
@@ -101019,8 +101678,8 @@ ${pad}}`;
       if (!(low instanceof Integer || low instanceof Rational) || !(high instanceof Integer || high instanceof Rational)) {
         throw new Error(`${label} interval endpoints must be tagged Integers or Rationals`);
       }
-      const lowRational = exactRational6(low, `${label} lower endpoint`);
-      const highRational = exactRational6(high, `${label} upper endpoint`);
+      const lowRational = exactRational7(low, `${label} lower endpoint`);
+      const highRational = exactRational7(high, `${label} upper endpoint`);
       if (rationalCompare(lowRational, highRational) > 0)
         throw new Error(`${label} interval endpoints must be ordered`);
       return new RationalInterval(lowRational, highRational);
@@ -102639,7 +103298,7 @@ ${renderNode(slide.content, state, `${path}.slide${index + 1}.content`)}`;
   function cross(left, right) {
     return [left[1] * right[2] - left[2] * right[1], left[2] * right[0] - left[0] * right[2], left[0] * right[1] - left[1] * right[0]];
   }
-  function normalize4(value) {
+  function normalize5(value) {
     const length = Math.hypot(...value);
     if (!length)
       throw new Error("WebGL camera vectors must not be degenerate");
@@ -102656,8 +103315,8 @@ ${renderNode(slide.content, state, `${path}.slide${index + 1}.content`)}`;
     return result;
   }
   function lookAt(eye, target, up) {
-    const z = normalize4(subtract3(eye, target));
-    const x = normalize4(cross(up, z));
+    const z = normalize5(subtract3(eye, target));
+    const x = normalize5(cross(up, z));
     const y = cross(z, x);
     return [
       x[0],
@@ -105999,13 +106658,13 @@ Evidence: ${JSON.stringify(frame.snapshot)}
       return target;
     const text = stringValue10(target, "ConvertUnit target");
     const collection = activeCollection(context, systemContext, "Units", ["UNITS", "Units"]);
-    return parseUnitExpression(text, collection);
+    return parseUnitExpression2(text, collection);
   }
   var unitExactFunctions = {
     UNIT: {
       impl(args, context, _evaluate, systemContext) {
         const collection = activeCollection(context, systemContext, "Units", ["UNITS", "Units"]);
-        const unit = parseUnitExpression(args[1], collection);
+        const unit = parseUnitExpression2(args[1], collection);
         return multiplyWithUnits(args[0], unit);
       },
       pure: true,
@@ -114316,7 +114975,7 @@ $${outputName};`;
       left[0] * right[1] - left[1] * right[0]
     ];
   }
-  function normalize5(value, fallback = [1, 0, 0]) {
+  function normalize6(value, fallback = [1, 0, 0]) {
     const length = Math.hypot(...value);
     return length > 0.000000000001 ? value.map((entry) => entry / length) : [...fallback];
   }
@@ -114389,9 +115048,9 @@ $${outputName};`;
     return state;
   }
   function truckScene3DCamera(state, horizontal, vertical) {
-    const forward = normalize5(subtract4(state.camera.target, state.camera.position), [0, 0, -1]);
-    const right = normalize5(cross2(forward, state.camera.up), [1, 0, 0]);
-    const up = normalize5(cross2(right, forward), [0, 0, 1]);
+    const forward = normalize6(subtract4(state.camera.target, state.camera.position), [0, 0, -1]);
+    const right = normalize6(cross2(forward, state.camera.up), [1, 0, 0]);
+    const up = normalize6(cross2(right, forward), [0, 0, 1]);
     const delta = add5(scale2(right, Number(horizontal || 0)), scale2(up, Number(vertical || 0)));
     state.camera.position = add5(state.camera.position, delta);
     state.camera.target = add5(state.camera.target, delta);
