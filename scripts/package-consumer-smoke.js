@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import {
+    existsSync,
     mkdirSync,
     mkdtempSync,
     rmSync,
@@ -71,7 +72,10 @@ try {
 
     let coreTarball;
     if (workspaceCore) {
-        const coreRoot = path.resolve(rixRoot, "../packages/core");
+        // The umbrella keeps Core at core/ (packages/core before 2026-11-26).
+        const coreRoot = [path.resolve(rixRoot, "../core"), path.resolve(rixRoot, "../packages/core")]
+            .find((candidate) => existsSync(path.join(candidate, "package.json")));
+        if (!coreRoot) throw new Error("Expected @ratmath/core at ../core next to rix");
         const coreManifest = await Bun.file(path.join(coreRoot, "package.json")).json();
         if (coreManifest.name !== "@ratmath/core") throw new Error("Expected sibling @ratmath/core package");
         const [coreReport] = JSON.parse(run([
