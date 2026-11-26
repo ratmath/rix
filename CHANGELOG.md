@@ -41,7 +41,7 @@
 
 ### Changed
 
-- `@ratmath/core` is now `^0.9.0`, so RiX and the ratmath libraries can share
+- `@ratmath/core` is now `^0.10.0`, so RiX and the ratmath libraries can share
   one Core instance.
 - `a:!b` used to read as `a:(NOT b)`, which always gave `_`; it is now a
   strict link. `_` touching a colon is now an unbounded end rather than a
