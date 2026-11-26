@@ -145,7 +145,7 @@ every special function.
 
 | Concern | Owner | Boundary |
 | --- | --- | --- |
-| Exact interval unions, infinities, normalization, set operations | `packages/core` | `RationalIntervalSet`; no transcendental facts or work budgets |
+| Exact interval unions, infinities, normalization, set operations | Core (`@ratmath/core`) | `RationalIntervalSet`; no transcendental facts or work budgets |
 | RiX type registration, methods, formatting, serialization | `rix/src/runtime`, `rix/src/eval/format.js` | Language adapter for the Core value |
 | Range requests/results, provider validation, method selection, subdivision | `rix/plugins/numerics` | Orchestration and honest evidence aggregation |
 | Mathematical expression DAG, identity, exact derivatives, domain obligations | `rix/plugins/calculus` | Structure consumed by Numerics |
