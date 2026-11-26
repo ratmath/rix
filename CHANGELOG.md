@@ -4,6 +4,31 @@
 
 ### Added
 
+- Units now come from Core (`@ratmath/core/units`), shared with the RatMath
+  calculator and the Shelf libraries. The catalogue grows to Core's: SI
+  prefixes on the units that take them (`2~[kHz]`, `1~[mAh]`), binary
+  prefixes on bits and bytes (`1~[MiB]`), grams, litres, US customary
+  lengths, masses and volumes, pressure (`bar`, `atm`, `psi`), energy
+  (`eV`, `cal`, `kWh`), electricity (`V`, `Ω`, `C`, `F`, ...), `gon`,
+  `arcmin` and `arcsec`. Radians to degrees is exact through `.Exact[:pi]`:
+  `.ConvertUnit(1~[rad], "deg")` is `180~{pi^-1}~[deg]`.
+
+### Changed
+
+- `K` is an absolute temperature: `.ConvertUnit(300~[K], "degC")` now gives
+  `26..17/20~[degC]` instead of an error, and `300~[K] - 20~[degC]` is a
+  difference in K.
+- Compound units print factors in the order they were written
+  (`m*kg/s^2`, not alphabetically) and parenthesise a denominator with more
+  than one factor (`m/(s*kg)`); the old `m/s*kg` read back as m·kg/s.
+- Error messages for unit misuse come from Core: comparing different
+  dimensions says "Incompatible dimensions for comparison", adding two
+  temperature points says "Cannot add two temperature points".
+- `.DefineUnit` needs a unit size that is a rational times a power of pi.
+- Quantities keep their magnitude in their display unit; `baseMagnitude` is
+  still available and is computed on demand.
+- Requires `@ratmath/core` ^0.11.1 (for `@ratmath/core/units`).
+
 - Piecewise functions: `{?: /x; n/ region ? rule; ...; default }` builds a
   callable. The `/.../` header declares variables and, after `;`, integers
   that each region solves for (`Saw := {?: /x; n/ n:x:!n+1 ? x - n }`).

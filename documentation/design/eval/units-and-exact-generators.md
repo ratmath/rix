@@ -76,19 +76,36 @@ composition of the two systems rather than a special transcendental unit.
 
 ## Physical representation
 
+The unit mathematics lives in Core, in `@ratmath/core/units`, which the
+RatMath calculator and the Shelf libraries share. RiX's
+`src/runtime/quantities.js` gives Core's `Unit` and `Quantity` a RiX shape
+and passes RiX's own scalar arithmetic in, so magnitudes can be exact
+generators, algebraic numbers or intervals.
+
 Every unit resolves to a coherent base representation:
 
 ```text
-unit = dimensions + scale + offset + display name
-base magnitude = displayed magnitude * scale + offset
+unit = dimensions + scale * pi^k + offset + display name
+base magnitude = displayed magnitude * scale * pi^k + offset
 ```
 
-Dimensions use stable semantic names such as `Length`, `Time`, `Mass`, and
-`Angle`; they do not use display unit names. Conversion factors are exact RiX
-numeric values, normally `Integer` or `Rational`, never JavaScript floats.
+Dimensions use stable semantic names (`Mass`, `Length`, `Time`, `Current`,
+`Temperature`, `Amount`, `Luminosity`, `Angle`, `Information`); they do not
+use display unit names. A unit's scale is an exact rational times an integer
+power of pi, never a JavaScript float, so degrees, turns and parsecs are
+exact. RiX supplies `.Exact[:pi]` for those powers, so
+`.ConvertUnit(1~[rad], "deg")` is exactly `180~{pi^-1}~[deg]`.
 
-Quantities retain a display unit but store a coherent base magnitude. This
+Quantities keep their magnitude in their display unit and convert by exact
+factors when asked; `baseMagnitude` gives the coherent base magnitude. This
 makes compatibility and arithmetic independent of presentation.
+
+The catalogue is Core's: SI base and derived units with SI prefixes on the
+units that take them (`km`, `mL`, `kWh`, `MeV`), binary prefixes on bits and
+bytes (`KiB`), US customary lengths, masses and volumes, time, angles,
+pressure, energy, power, electricity and temperatures. Unit expressions such
+as `~[m/(s*kg)]` parse with parentheses, and a denominator with more than one
+factor prints in parentheses so that the printed form reads back.
 
 ### Arithmetic
 
@@ -128,8 +145,8 @@ The source unit is already part of a quantity and must not be repeated:
 .ConvertUnit(180~[deg], .Units[:rad]) ## 1~{pi}~[rad]
 ```
 
-The default angle registry includes `rad`, `deg`, and `turn`; degree and turn
-scales share the canonical `.Exact[:pi]` generator.
+The default angle registry includes `rad`, `deg`, `turn`, `gon`, `arcmin`
+and `arcsec`; their pi factors use the canonical `.Exact[:pi]` generator.
 
 ### Callable units and affine coordinates
 
@@ -145,7 +162,9 @@ same construction as `m * 3`.
 
 Affine coordinates such as Celsius and Fahrenheit are callable, but cannot be
 multiplied into compound unit expressions. Temperature differences use linear
-units such as `deltaDegC`.
+units such as `deltaDegC`. A point minus a point is a difference, a point plus
+a difference is a point, and two points cannot be added. `K` is absolute, so
+`.ConvertUnit(300~[K], "degC")` gives `26..17/20~[degC]`.
 
 ## Exact generators and relations
 

@@ -7,7 +7,7 @@ describe("standalone package", () => {
   test("declares compatible dependencies and portable package workers", async () => {
     const manifest = await Bun.file(path.join(rixRoot, "package.json")).json();
     expect(manifest.name).toBe("@ratmath/rix");
-    expect(manifest.dependencies["@ratmath/core"]).toBe("^0.9.0");
+    expect(manifest.dependencies["@ratmath/core"]).toBe("^0.11.1");
     expect(manifest.engines).toEqual({ node: ">=22" });
 
     const worker = await Bun.file(path.join(rixRoot, "bin/rix-worker.js")).text();
