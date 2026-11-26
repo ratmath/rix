@@ -87,7 +87,7 @@ describe("physical unit values", () => {
         expect(evalRiX("1~[m] != 100~[cm]")).toBe(null);
         expect(evalRiX("1~[m] < 2~[m]")).toBeInstanceOf(Integer);
         expect(evalRiX(".Units[:N] == .Units[:kg] * .Units[:m] / .Units[:s]^2")).toBeInstanceOf(Integer);
-        expect(() => evalRiX("1~[m] < 2~[s]")).toThrow(/incompatible.*ordering/i);
+        expect(() => evalRiX("1~[m] < 2~[s]")).toThrow(/incompatible.*comparison/i);
     });
 
     test("implicit compatible conversion can emit an opt-in warning", () => {
@@ -133,7 +133,7 @@ describe("physical unit values", () => {
         expect(formatValue(c)).toBe("20~[degC]");
         expect(formatValue(evalRiX(".ConvertUnit(.Units[:degC](20), .Units[:degF])"))).toBe("68~[degF]");
         expect(() => evalRiX(".Units[:degC] * .Units[:m]")).toThrow(/affine unit.*compound/i);
-        expect(() => evalRiX(".Units[:degC](20) + .Units[:degC](10)")).toThrow(/affine quantity points/i);
+        expect(() => evalRiX(".Units[:degC](20) + .Units[:degC](10)")).toThrow(/two temperature points/i);
         expect(formatValue(evalRiX(".Units[:degC](20) - .Units[:degC](10)"))).toBe("10~[deltaDegC]");
     });
 
@@ -303,5 +303,40 @@ describe("Cayley polar complex values", () => {
         `))).toBe("4 - 1~{i}");
         expect(formatValue(evalRiX("(5 + 3~{i}).Cayley() * (1/2 - (1/2)~{i}).Cayley()")))
             .toBe("Cayley(1~{sqrt17}, 4 - 1~{sqrt17})");
+    });
+});
+
+describe("units from Core", () => {
+    test("SI and binary prefixes on the units that take them", () => {
+        expect(formatValue(evalRiX('.ConvertUnit(2~[kHz], "Hz")'))).toBe("2000~[Hz]");
+        expect(formatValue(evalRiX('.ConvertUnit(1~[mAh], "C")'))).toBe("3..3/5~[C]");
+        expect(formatValue(evalRiX('.ConvertUnit(1~[KiB], "B")'))).toBe("1024~[B]");
+        expect(() => evalRiX("1~[kft]")).toThrow(/unknown unit/i);
+    });
+
+    test("radians to degrees stays exact through .Exact[:pi]", () => {
+        expect(formatValue(evalRiX('.ConvertUnit(1~[rad], "deg")'))).toBe("180~{pi^-1}~[deg]");
+        expect(formatValue(evalRiX('.ConvertUnit(90~[deg], "turn")'))).toBe("1/4 ~[turn]");
+    });
+
+    test("K is absolute and converts to degC", () => {
+        expect(formatValue(evalRiX('.ConvertUnit(300~[K], "degC")'))).toBe("26..17/20~[degC]");
+        expect(formatValue(evalRiX("300~[K] - .Units[:degC](20)"))).toBe("6..17/20~[K]");
+    });
+
+    test("compound units print in written order and parse back", () => {
+        expect(formatValue(evalRiX("3~[m/(s*kg)]"))).toBe("3~[m/(s*kg)]");
+        expect(formatValue(evalRiX("9.8~[m/s^2] * 3~[kg]"))).toBe("29..2/5~[m*kg/s^2]");
+        expect(formatValue(evalRiX('.ConvertUnit(9.8~[m/s^2] * 3~[kg], "N")'))).toBe("29..2/5~[N]");
+    });
+
+    test("baseMagnitude is the coherent SI magnitude", () => {
+        expect(evalRiX("2~[km]").baseMagnitude.toString()).toBe("2000");
+        expect(evalRiX(".Units[:degC](0)").baseMagnitude.toString()).toBe("5463/20");
+    });
+
+    test("lower-cased keys resolve but take no prefixes", () => {
+        expect(formatValue(evalRiX("2~[hz]"))).toBe("2~[Hz]");
+        expect(() => evalRiX("2~[khz]")).toThrow(/unknown unit/i);
     });
 });

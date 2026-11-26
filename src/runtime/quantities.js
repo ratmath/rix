@@ -1,4 +1,29 @@
-import { Integer, Rational, RationalInterval, Relation, TypePromotion, possibleRelations } from "@ratmath/core";
+// RiX unit and quantity values on top of @ratmath/core/units.
+//
+// Core owns the mathematics: the unit catalogue, dimensions, exact conversion
+// factors (a rational times a power of pi), affine temperatures, SI and binary
+// prefixes and unit-expression parsing. This file only gives Core's Unit and
+// Quantity a RiX shape:
+//
+//   unit      { type: "unit", name, symbol, dimensions, core, _ext }   a named unit
+//   unit_expr { type: "unit_expr", name, dimensions, core }            a product or power
+//   quantity  { type: "quantity", core, displayUnit, dimensions, affinePoint, baseMagnitude }
+//
+// Magnitudes go through RiX's own scalar arithmetic (exact generators such as
+// pi, algebraic numbers, intervals), so 180~[deg] converts to exactly 1~{pi}~[rad].
+// The .Units collection stays an ordinary RiX map; parsing a unit expression
+// looks names up in the active collection, with SI prefixes on the units that
+// take them.
+
+import { Integer, RationalInterval, Relation, TypePromotion, possibleRelations } from "@ratmath/core";
+import {
+    Quantity as CoreQuantity,
+    Unit as CoreUnit,
+    UnitSystem,
+    coreScalars,
+    dimensionsEqual as coreDimensionsEqual,
+    units as coreUnits,
+} from "@ratmath/core/units";
 import {
     addScalars,
     createDefaultExactCollection,
@@ -17,10 +42,6 @@ function int(value) {
     return new Integer(BigInt(value));
 }
 
-function rat(numerator, denominator = 1n) {
-    return denominator === 1n ? new Integer(numerator) : new Rational(numerator, denominator);
-}
-
 function stringValue(value, label = "name") {
     if (typeof value === "string") return value;
     if (value?.type === "string") return value.value;
@@ -31,162 +52,12 @@ export function isScalar(value) {
     return isRationalScalar(value) || value instanceof RationalInterval || isExactValue(value);
 }
 
-function isIntervalScalar(value) {
-    return value instanceof RationalInterval;
-}
+// ---------------------------------------------------------------------------
+// RiX scalar arithmetic for Core's UnitSystem
 
-function addQuantityScalars(left, right) {
-    return isIntervalScalar(left) || isIntervalScalar(right)
-        ? TypePromotion.add(left, right)
-        : addScalars(left, right);
-}
+const isInterval = (value) => value instanceof RationalInterval;
 
-function subtractQuantityScalars(left, right) {
-    return isIntervalScalar(left) || isIntervalScalar(right)
-        ? TypePromotion.subtract(left, right)
-        : subtractScalars(left, right);
-}
-
-function multiplyQuantityScalars(left, right) {
-    return isIntervalScalar(left) || isIntervalScalar(right)
-        ? TypePromotion.multiply(left, right)
-        : multiplyScalars(left, right);
-}
-
-function divideQuantityScalars(left, right) {
-    return isIntervalScalar(left) || isIntervalScalar(right)
-        ? TypePromotion.divide(left, right)
-        : divideScalars(left, right);
-}
-
-function negateQuantityScalar(value) {
-    return isIntervalScalar(value) ? TypePromotion.negate(value) : negateScalar(value);
-}
-
-function powQuantityScalar(value, exponent) {
-    return isIntervalScalar(value) ? value.pow(integerExponent(exponent)) : powScalar(value, exponent);
-}
-
-function cloneDimensions(dimensions = {}) {
-    return Object.fromEntries(Object.entries(dimensions).filter(([, exponent]) => exponent !== 0));
-}
-
-function combineDimensions(left, right, sign = 1) {
-    const dimensions = cloneDimensions(left);
-    for (const [name, exponent] of Object.entries(right)) {
-        const next = (dimensions[name] || 0) + sign * exponent;
-        if (next === 0) delete dimensions[name];
-        else dimensions[name] = next;
-    }
-    return dimensions;
-}
-
-function scaleDimensions(dimensions, exponent) {
-    return Object.fromEntries(
-        Object.entries(dimensions)
-            .map(([name, power]) => [name, power * exponent])
-            .filter(([, power]) => power !== 0),
-    );
-}
-
-export function dimensionsEqual(left, right) {
-    const a = Object.entries(cloneDimensions(left)).sort();
-    const b = Object.entries(cloneDimensions(right)).sort();
-    return a.length === b.length && a.every(([name, exponent], index) => name === b[index][0] && exponent === b[index][1]);
-}
-
-function describeDimensions(dimensions) {
-    const entries = Object.entries(dimensions).sort();
-    return entries.length
-        ? entries.map(([name, exponent]) => exponent === 1 ? name : `${name}^${exponent}`).join("*")
-        : "Dimensionless";
-}
-
-function unitExt(name) {
-    return new Map([["key", { type: "string", value: name }], ["immutable", int(1)]]);
-}
-
-export function createUnit(name, options = {}) {
-    const symbol = options.symbol || name;
-    return Object.freeze({
-        type: "unit",
-        name,
-        symbol,
-        dimensions: cloneDimensions(options.dimensions),
-        scale: options.scale || int(1),
-        offset: options.offset || int(0),
-        affine: options.affine === true,
-        difference: options.difference === true,
-        differenceUnit: options.differenceUnit || null,
-        _ext: unitExt(name),
-    });
-}
-
-export function isUnitValue(value) {
-    return value?.type === "unit" || value?.type === "unit_expr";
-}
-
-function factorKey(factor) {
-    return factor.name || factor.symbol;
-}
-
-function factorsFromUnit(unit) {
-    if (unit.type === "unit_expr") return new Map(unit.factors);
-    return new Map([[unit, 1]]);
-}
-
-function createUnitExpr(dimensions, scale, factors) {
-    return {
-        type: "unit_expr",
-        dimensions: cloneDimensions(dimensions),
-        scale,
-        offset: int(0),
-        affine: false,
-        factors: new Map([...factors.entries()].filter(([, exponent]) => exponent !== 0)),
-    };
-}
-
-function ensureLinearUnit(unit) {
-    if (unit?.affine) throw new Error(`Affine unit '${unit.symbol}' cannot be used in a compound unit expression`);
-}
-
-export function multiplyUnits(left, right) {
-    ensureLinearUnit(left);
-    ensureLinearUnit(right);
-    const factors = factorsFromUnit(left);
-    for (const [factor, exponent] of factorsFromUnit(right)) {
-        const next = (factors.get(factor) || 0) + exponent;
-        if (next === 0) factors.delete(factor);
-        else factors.set(factor, next);
-    }
-    return createUnitExpr(
-        combineDimensions(left.dimensions, right.dimensions),
-        multiplyScalars(left.scale, right.scale),
-        factors,
-    );
-}
-
-export function divideUnits(left, right) {
-    ensureLinearUnit(left);
-    ensureLinearUnit(right);
-    const factors = factorsFromUnit(left);
-    for (const [factor, exponent] of factorsFromUnit(right)) {
-        const next = (factors.get(factor) || 0) - exponent;
-        if (next === 0) factors.delete(factor);
-        else factors.set(factor, next);
-    }
-    return createUnitExpr(
-        combineDimensions(left.dimensions, right.dimensions, -1),
-        divideScalars(left.scale, right.scale),
-        factors,
-    );
-}
-
-export function invertUnit(unit) {
-    ensureLinearUnit(unit);
-    const factors = new Map([...factorsFromUnit(unit)].map(([factor, exponent]) => [factor, -exponent]));
-    return createUnitExpr(scaleDimensions(unit.dimensions, -1), divideScalars(int(1), unit.scale), factors);
-}
+class ExactOrderError extends Error {}
 
 function integerExponent(value) {
     if (value instanceof Integer) return Number(value.value);
@@ -194,195 +65,223 @@ function integerExponent(value) {
     throw new Error("Unit exponent must be an integer");
 }
 
+const defaultPi = createDefaultExactCollection()?.entries?.get("pi") ?? null;
+
+const rixScalars = Object.freeze({
+    isScalar,
+    from(value) {
+        if (isScalar(value)) return value;
+        throw new Error("A unit must be applied to an exact scalar value");
+    },
+    add: (a, b) => (isInterval(a) || isInterval(b) ? TypePromotion.add(a, b) : addScalars(a, b)),
+    subtract: (a, b) => (isInterval(a) || isInterval(b) ? TypePromotion.subtract(a, b) : subtractScalars(a, b)),
+    multiply: (a, b) => (isInterval(a) || isInterval(b) ? TypePromotion.multiply(a, b) : multiplyScalars(a, b)),
+    divide: (a, b) => (isInterval(a) || isInterval(b) ? TypePromotion.divide(a, b) : divideScalars(a, b)),
+    negate: (a) => (isInterval(a) ? TypePromotion.negate(a) : negateScalar(a)),
+    pow: (a, n) => (isInterval(a) ? a.pow(n) : powScalar(a, int(n))),
+    relation(a, b) {
+        if (isExactValue(a) || isExactValue(b)) {
+            if (equalScalars(a, b)) return Relation.EQUAL;
+            throw new ExactOrderError("Exact symbolic quantity expressions are not ordered");
+        }
+        return possibleRelations(a, b);
+    },
+    pi: (k) => (defaultPi ? powScalar(defaultPi, int(k)) : coreScalars.pi(k)),
+});
+
+// Every RiX quantity lives in this system: Core's catalogue with RiX scalars.
+const RIX_SYSTEM = coreUnits.extend({ scalars: rixScalars });
+
+// ---------------------------------------------------------------------------
+// Units
+
+const unitWrappers = new WeakMap();
+
+function unitExt(name) {
+    return new Map([["key", { type: "string", value: name }], ["immutable", int(1)]]);
+}
+
+function wrapUnit(core) {
+    let value = unitWrappers.get(core);
+    if (value) return value;
+    value = core.isNamed
+        ? Object.freeze({
+            type: "unit",
+            name: core.name,
+            symbol: core.name,
+            dimensions: core.dimensions,
+            core,
+            _ext: unitExt(core.name),
+        })
+        : Object.freeze({
+            type: "unit_expr",
+            name: core.toString(),
+            dimensions: core.dimensions,
+            core,
+        });
+    unitWrappers.set(core, value);
+    return value;
+}
+
+function coreUnit(value) {
+    if (!isUnitValue(value)) throw new Error("Expected a Unit or UnitExpr");
+    return value.core;
+}
+
+/**
+ * A RiX unit value. Options: dimensions, scale (exact rational), offset,
+ * affine, difference, differenceUnit (a RiX unit), piPower, prefixes.
+ */
+export function createUnit(name, options = {}) {
+    return wrapUnit(new CoreUnit(name, {
+        dimensions: options.dimensions,
+        scale: options.scale,
+        piPower: options.piPower,
+        offset: options.affine ? options.offset : undefined,
+        kind: options.affine ? "affine" : options.difference ? "difference" : "linear",
+        differenceUnit: options.differenceUnit ? coreUnit(options.differenceUnit) : null,
+        prefixes: options.prefixes,
+    }));
+}
+
+export function isUnitValue(value) {
+    return (value?.type === "unit" || value?.type === "unit_expr") && value.core instanceof CoreUnit;
+}
+
+export function multiplyUnits(left, right) {
+    return wrapUnit(coreUnit(left).multiply(coreUnit(right)));
+}
+
+export function divideUnits(left, right) {
+    return wrapUnit(coreUnit(left).divide(coreUnit(right)));
+}
+
+export function invertUnit(unit) {
+    return wrapUnit(coreUnit(unit).inverse());
+}
+
 export function powUnit(unit, exponentValue) {
-    ensureLinearUnit(unit);
-    const exponent = integerExponent(exponentValue);
-    const factors = new Map([...factorsFromUnit(unit)].map(([factor, power]) => [factor, power * exponent]));
-    return createUnitExpr(
-        scaleDimensions(unit.dimensions, exponent),
-        powScalar(unit.scale, int(exponent)),
-        factors,
-    );
+    return wrapUnit(coreUnit(unit).pow(integerExponent(exponentValue)));
+}
+
+export function unitsEquivalent(left, right) {
+    return coreUnit(left).equals(coreUnit(right));
+}
+
+export function formatUnit(unit) {
+    return coreUnit(unit).toString();
+}
+
+// ---------------------------------------------------------------------------
+// Quantities
+
+function wrapQuantity(core) {
+    let base;
+    return {
+        type: "quantity",
+        core,
+        displayUnit: wrapUnit(core.unit),
+        dimensions: core.dimensions,
+        affinePoint: core.point,
+        // The magnitude in coherent SI base units (offsets applied for points).
+        get baseMagnitude() {
+            if (base === undefined) base = core.toBase().value;
+            return base;
+        },
+    };
+}
+
+// A plain scalar or a wrapped quantity from a Core result.
+function fromCore(result) {
+    return result instanceof CoreQuantity ? wrapQuantity(result) : result;
+}
+
+export function isQuantity(value) {
+    return value?.type === "quantity" && value.core instanceof CoreQuantity;
+}
+
+function coreQuantity(value) {
+    if (!isQuantity(value)) throw new Error("Expected a quantity");
+    return value.core;
 }
 
 export function constructQuantity(magnitude, unit) {
     if (!isScalar(magnitude)) throw new Error("A unit must be applied to an exact scalar value");
     if (!isUnitValue(unit)) throw new Error("Quantity construction requires a Unit or UnitExpr");
-    const scaled = multiplyQuantityScalars(magnitude, unit.scale);
-    const baseMagnitude = unit.affine ? addQuantityScalars(scaled, unit.offset) : scaled;
-    return {
-        type: "quantity",
-        baseMagnitude,
-        dimensions: cloneDimensions(unit.dimensions),
-        displayUnit: unit,
-        affinePoint: unit.affine === true,
-    };
+    return wrapQuantity(new CoreQuantity(magnitude, unit.core, { system: RIX_SYSTEM }));
 }
 
-export function isQuantity(value) {
-    return value?.type === "quantity";
-}
-
+/** The magnitude in the quantity's own display unit. */
 export function displayMagnitude(quantity) {
-    const unit = quantity.displayUnit;
-    const shifted = unit.affine ? subtractQuantityScalars(quantity.baseMagnitude, unit.offset) : quantity.baseMagnitude;
-    return divideQuantityScalars(shifted, unit.scale);
+    return coreQuantity(quantity).value;
 }
 
 export function convertQuantity(quantity, target) {
     if (!isQuantity(quantity)) throw new Error("ConvertUnit expects a quantity");
     if (!isUnitValue(target)) throw new Error("ConvertUnit target must be a Unit or UnitExpr");
-    if (!dimensionsEqual(quantity.dimensions, target.dimensions)) {
-        throw new Error(`Incompatible unit dimensions: ${describeDimensions(quantity.dimensions)} cannot convert to ${describeDimensions(target.dimensions)}`);
-    }
-    if (quantity.affinePoint && target.difference) {
-        throw new Error("Cannot convert an affine quantity point to a difference unit");
-    }
-    if (!quantity.affinePoint && target.affine) {
-        throw new Error("Cannot convert a quantity difference to an affine coordinate unit");
-    }
-    return {
-        ...quantity,
-        displayUnit: target,
-        affinePoint: quantity.affinePoint || target.affine === true,
-    };
+    return wrapQuantity(quantity.core.to(target.core));
 }
 
 export function addQuantities(left, right) {
-    if (!dimensionsEqual(left.dimensions, right.dimensions)) {
-        throw new Error(`Incompatible quantity dimensions for addition: ${describeDimensions(left.dimensions)} and ${describeDimensions(right.dimensions)}`);
-    }
-    if (left.affinePoint && right.affinePoint) {
-        throw new Error("Cannot add two affine quantity points; add a temperature difference instead");
-    }
-    const point = left.affinePoint ? left : right.affinePoint ? right : null;
-    return {
-        type: "quantity",
-        baseMagnitude: addQuantityScalars(left.baseMagnitude, right.baseMagnitude),
-        dimensions: cloneDimensions(left.dimensions),
-        displayUnit: point?.displayUnit || left.displayUnit,
-        affinePoint: Boolean(point),
-    };
+    return wrapQuantity(coreQuantity(left).add(coreQuantity(right)));
 }
 
 export function subtractQuantities(left, right) {
-    if (!dimensionsEqual(left.dimensions, right.dimensions)) {
-        throw new Error(`Incompatible quantity dimensions for subtraction: ${describeDimensions(left.dimensions)} and ${describeDimensions(right.dimensions)}`);
-    }
-    if (!left.affinePoint && right.affinePoint) {
-        throw new Error("Cannot subtract an affine quantity point from a quantity difference");
-    }
-    const pointDifference = left.affinePoint && right.affinePoint;
-    const displayUnit = pointDifference
-        ? (left.displayUnit.differenceUnit || createUnit(`delta${left.displayUnit.symbol}`, {
-            symbol: `delta${left.displayUnit.symbol}`,
-            dimensions: left.dimensions,
-            scale: left.displayUnit.scale,
-            difference: true,
-        }))
-        : left.displayUnit;
-    return {
-        type: "quantity",
-        baseMagnitude: subtractQuantityScalars(left.baseMagnitude, right.baseMagnitude),
-        dimensions: cloneDimensions(left.dimensions),
-        displayUnit,
-        affinePoint: left.affinePoint && !pointDifference,
-    };
+    return wrapQuantity(coreQuantity(left).subtract(coreQuantity(right)));
 }
 
-function displayProduct(left, right, divide = false) {
-    return divide ? divideUnits(left, right) : multiplyUnits(left, right);
+export function negateQuantity(quantity) {
+    return wrapQuantity(coreQuantity(quantity).negate());
 }
 
 export function multiplyQuantityValues(left, right) {
-    if (isQuantity(left) && isQuantity(right)) {
-        if (left.affinePoint || right.affinePoint) throw new Error("Affine quantity points cannot be multiplied");
-        const dimensions = combineDimensions(left.dimensions, right.dimensions);
-        const baseMagnitude = multiplyQuantityScalars(left.baseMagnitude, right.baseMagnitude);
-        if (Object.keys(dimensions).length === 0) return baseMagnitude;
-        return {
-            type: "quantity",
-            baseMagnitude,
-            dimensions,
-            displayUnit: displayProduct(left.displayUnit, right.displayUnit),
-            affinePoint: false,
-        };
-    }
-    const quantity = isQuantity(left) ? left : right;
-    const scalar = isQuantity(left) ? right : left;
-    if (!isScalar(scalar)) throw new Error("Quantity multiplication requires a scalar or quantity");
-    return { ...quantity, baseMagnitude: multiplyQuantityScalars(quantity.baseMagnitude, scalar) };
+    if (isQuantity(left)) return fromCore(left.core.multiply(isQuantity(right) ? right.core : right));
+    if (!isQuantity(right)) throw new Error("Quantity multiplication requires a scalar or quantity");
+    if (!isScalar(left)) throw new Error("Quantity multiplication requires a scalar or quantity");
+    return fromCore(right.core.multiply(left));
 }
 
 export function divideQuantityValues(left, right) {
-    if (isQuantity(left) && isQuantity(right)) {
-        if (left.affinePoint || right.affinePoint) throw new Error("Affine quantity points cannot be divided");
-        const dimensions = combineDimensions(left.dimensions, right.dimensions, -1);
-        const baseMagnitude = divideQuantityScalars(left.baseMagnitude, right.baseMagnitude);
-        if (Object.keys(dimensions).length === 0) return baseMagnitude;
-        return {
-            type: "quantity",
-            baseMagnitude,
-            dimensions,
-            displayUnit: displayProduct(left.displayUnit, right.displayUnit, true),
-            affinePoint: false,
-        };
+    if (isQuantity(left)) {
+        if (!isQuantity(right) && !isScalar(right)) throw new Error("Unsupported quantity division");
+        return fromCore(left.core.divide(isQuantity(right) ? right.core : right));
     }
-    if (isQuantity(left) && isScalar(right)) {
-        return { ...left, baseMagnitude: divideQuantityScalars(left.baseMagnitude, right) };
-    }
-    if (isScalar(left) && isQuantity(right)) {
-        if (right.affinePoint) throw new Error("Cannot divide by an affine quantity point");
-        return {
-            type: "quantity",
-            baseMagnitude: divideQuantityScalars(left, right.baseMagnitude),
-            dimensions: scaleDimensions(right.dimensions, -1),
-            displayUnit: invertUnit(right.displayUnit),
-            affinePoint: false,
-        };
-    }
+    if (isScalar(left) && isQuantity(right)) return fromCore(right.core.inverse().multiply(left));
     throw new Error("Unsupported quantity division");
 }
 
 export function powQuantity(quantity, exponentValue) {
-    if (quantity.affinePoint) throw new Error("Affine quantity points cannot be exponentiated");
-    const exponent = integerExponent(exponentValue);
-    const dimensions = scaleDimensions(quantity.dimensions, exponent);
-    const magnitude = powQuantityScalar(quantity.baseMagnitude, int(exponent));
-    if (Object.keys(dimensions).length === 0) return magnitude;
-    return {
-        type: "quantity",
-        baseMagnitude: magnitude,
-        dimensions,
-        displayUnit: powUnit(quantity.displayUnit, int(exponent)),
-        affinePoint: false,
-    };
+    return fromCore(coreQuantity(quantity).pow(integerExponent(exponentValue)));
 }
 
-export function negateQuantity(quantity) {
-    return { ...quantity, baseMagnitude: negateQuantityScalar(quantity.baseMagnitude) };
+function relationMask(left, right) {
+    return coreQuantity(left).relation(coreQuantity(right));
 }
 
 export function quantitiesEqual(left, right) {
-    if (!dimensionsEqual(left.dimensions, right.dimensions)) return false;
-    if (isIntervalScalar(left.baseMagnitude) || isIntervalScalar(right.baseMagnitude)) {
-        return possibleRelations(left.baseMagnitude, right.baseMagnitude) === Relation.EQUAL;
+    if (!coreDimensionsEqual(left.dimensions, right.dimensions)) return false;
+    try {
+        return relationMask(left, right) === Relation.EQUAL;
+    } catch (error) {
+        if (error instanceof ExactOrderError) return false;
+        throw error;
     }
-    return equalScalars(left.baseMagnitude, right.baseMagnitude);
 }
 
 export function quantityRelation(left, right, operation) {
-    if (!dimensionsEqual(left.dimensions, right.dimensions)) {
+    if (!coreDimensionsEqual(left.dimensions, right.dimensions)) {
         if (operation === "eq") return false;
         if (operation === "neq") return true;
-        throw new Error(`Incompatible quantity dimensions for ordering: ${describeDimensions(left.dimensions)} and ${describeDimensions(right.dimensions)}`);
     }
-    if (isExactValue(left.baseMagnitude) || isExactValue(right.baseMagnitude)) {
-        if (operation === "eq") return equalScalars(left.baseMagnitude, right.baseMagnitude);
-        if (operation === "neq") return !equalScalars(left.baseMagnitude, right.baseMagnitude);
-        throw new Error("Exact symbolic quantity expressions are not ordered");
+    let mask;
+    try {
+        mask = relationMask(left, right);
+    } catch (error) {
+        if (!(error instanceof ExactOrderError)) throw error;
+        if (operation === "eq") return false;
+        if (operation === "neq") return true;
+        throw error;
     }
-    const mask = possibleRelations(left.baseMagnitude, right.baseMagnitude);
     switch (operation) {
     case "eq": return mask === Relation.EQUAL ? true : (mask & Relation.EQUAL) === 0 ? false : UNDECIDED;
     case "neq": return mask === Relation.EQUAL ? false : (mask & Relation.EQUAL) === 0 ? true : UNDECIDED;
@@ -394,37 +293,12 @@ export function quantityRelation(left, right, operation) {
     }
 }
 
-export function unitsEquivalent(left, right) {
-    return dimensionsEqual(left.dimensions, right.dimensions) &&
-        left.affine === right.affine &&
-        equalScalars(left.scale, right.scale) &&
-        equalScalars(left.offset || int(0), right.offset || int(0));
-}
-
 export function compareQuantities(left, right) {
-    if (!dimensionsEqual(left.dimensions, right.dimensions)) {
-        throw new Error(`Incompatible quantity dimensions for ordering: ${describeDimensions(left.dimensions)} and ${describeDimensions(right.dimensions)}`);
-    }
-    const difference = subtractQuantityScalars(left.baseMagnitude, right.baseMagnitude);
-    if (isExactValue(difference)) throw new Error("Exact symbolic quantity expressions are not ordered");
-    if (difference instanceof Integer) return difference.value < 0n ? -1 : difference.value > 0n ? 1 : 0;
-    if (difference instanceof Rational) return difference.numerator < 0n ? -1 : difference.numerator > 0n ? 1 : 0;
-    throw new Error("Quantity ordering requires an ordered scalar magnitude");
+    return coreQuantity(left).compare(coreQuantity(right));
 }
 
-export function formatUnit(unit) {
-    if (unit.type === "unit") return unit.symbol;
-    const numerator = [];
-    const denominator = [];
-    const factors = [...unit.factors.entries()].sort(([a], [b]) => factorKey(a).localeCompare(factorKey(b)));
-    for (const [factor, exponent] of factors) {
-        const target = exponent > 0 ? numerator : denominator;
-        const power = Math.abs(exponent);
-        target.push(power === 1 ? factor.symbol : `${factor.symbol}^${power}`);
-    }
-    if (numerator.length === 0 && denominator.length === 0) return "1";
-    const top = numerator.length ? numerator.join("*") : "1";
-    return denominator.length ? `${top}/${denominator.join("*")}` : top;
+export function dimensionsEqual(left, right) {
+    return coreDimensionsEqual(left, right);
 }
 
 // A unit written directly after a fraction binds to its denominator, so a
@@ -436,143 +310,65 @@ export function formatQuantity(quantity, formatScalar) {
     return `${magnitude}${separator}~[${formatUnit(quantity.displayUnit)}]`;
 }
 
-function unitEntry(collection, name) {
+// ---------------------------------------------------------------------------
+// The .Units collection
+
+const collectionSystems = new WeakMap();
+
+function checkCollection(collection) {
     if (!collection || collection.type !== "map" || !(collection.entries instanceof Map)) {
         throw new Error("Active Units value must be a RiX map collection");
     }
-    const value = collection.entries.get(name);
-    if (!isUnitValue(value)) throw new Error(`Unknown unit '${name}'`);
-    return value;
+}
+
+// A Core UnitSystem holding exactly the units in a RiX collection, so lookups
+// (and SI prefixes) see only what the collection offers.
+function systemFor(collection) {
+    checkCollection(collection);
+    const cached = collectionSystems.get(collection.entries);
+    if (cached && cached.size === collection.entries.size) return cached.system;
+    const system = new UnitSystem({ scalars: rixScalars });
+    for (const [key, value] of collection.entries) {
+        if (!isUnitValue(value)) continue;
+        // Lower-cased copies (hz, degc) are there for RiX's case-folded
+        // :name lookups; they resolve, but take no prefixes.
+        const folded = key !== value.core.name && !CORE_KEYS.has(key);
+        system.register(String(key), value.core, { replace: true, prefixes: !folded });
+    }
+    collectionSystems.set(collection.entries, { system, size: collection.entries.size });
+    return system;
 }
 
 export function parseUnitExpression(source, collection) {
-    const input = String(source).replace(/\s+/g, "");
-    let index = 0;
-
-    function parsePrimary() {
-        if (input[index] === "(") {
-            index++;
-            const value = parseProduct();
-            if (input[index] !== ")") throw new Error(`Expected ')' in unit expression '${source}'`);
-            index++;
-            return value;
-        }
-        const match = /^[\p{L}_][\p{L}\p{N}_]*/u.exec(input.slice(index));
-        if (!match) throw new Error(`Invalid unit expression '${source}' at character ${index + 1}`);
-        index += match[0].length;
-        return unitEntry(collection, match[0]);
-    }
-
-    function parsePower() {
-        let value = parsePrimary();
-        if (input[index] === "^") {
-            index++;
-            const match = /^-?\d+/.exec(input.slice(index));
-            if (!match) throw new Error(`Expected integer exponent in unit expression '${source}'`);
-            index += match[0].length;
-            value = powUnit(value, int(match[0]));
-        }
-        return value;
-    }
-
-    function parseProduct() {
-        let value = parsePower();
-        while (input[index] === "*" || input[index] === "/") {
-            const operator = input[index++];
-            const right = parsePower();
-            value = operator === "*" ? multiplyUnits(value, right) : divideUnits(value, right);
-        }
-        return value;
-    }
-
-    if (!input) throw new Error("Unit expression cannot be empty");
-    const result = parseProduct();
-    if (index !== input.length) throw new Error(`Invalid trailing input in unit expression '${source}'`);
-    return result;
+    return wrapUnit(systemFor(collection).parse(String(source)));
 }
 
 export function defineUnitFromValue(nameValue, definition) {
     const name = stringValue(nameValue, "Unit name");
+    const scratch = new UnitSystem({ scalars: rixScalars });
     if (isUnitValue(definition)) {
-        return createUnit(name, {
-            symbol: name,
-            dimensions: definition.dimensions,
-            scale: definition.scale,
-        });
+        if (definition.core.kind === "affine") throw new Error("DefineUnit expects a linear Unit or Quantity definition");
+        return wrapUnit(scratch.define(name, definition.core));
     }
     if (!isQuantity(definition) || definition.affinePoint) {
         throw new Error("DefineUnit expects a linear Unit or Quantity definition");
     }
-    return createUnit(name, {
-        symbol: name,
-        dimensions: definition.dimensions,
-        scale: definition.baseMagnitude,
-    });
+    return wrapUnit(scratch.define(name, definition.core));
 }
 
-export function createDefaultUnitCollection(exactCollection = createDefaultExactCollection()) {
+const CORE_KEYS = new Set(coreUnits.names());
+
+/**
+ * The default .Units collection: Core's catalogue under every name and alias,
+ * plus lower-cased copies (hz, degc) for RiX's case-folded :name lookups.
+ */
+export function createDefaultUnitCollection() {
     const entries = new Map();
-    const add = (name, options, aliases = []) => {
-        const unit = createUnit(name, options);
-        entries.set(name, unit);
-        entries.set(name.toLowerCase(), unit);
-        entries.set(unit.symbol, unit);
-        entries.set(unit.symbol.toLowerCase(), unit);
-        for (const alias of aliases) entries.set(alias, unit);
-        return unit;
-    };
-
-    const m = add("m", { dimensions: { Length: 1 } }, ["meter", "metre"]);
-    const s = add("s", { dimensions: { Time: 1 } }, ["second"]);
-    const kg = add("kg", { dimensions: { Mass: 1 } }, ["kilogram"]);
-    add("A", { dimensions: { Current: 1 } }, ["ampere"]);
-    add("deltaK", {
-        dimensions: { Temperature: 1 }, symbol: "deltaK", difference: true,
-    });
-    add("K", { dimensions: { Temperature: 1 }, symbol: "K" }, ["kelvin"]);
-    add("mol", { dimensions: { Amount: 1 } }, ["mole"]);
-    add("cd", { dimensions: { Luminosity: 1 } }, ["candela"]);
-    add("rad", { dimensions: { Angle: 1 } }, ["radian"]);
-    const pi = exactCollection?.entries?.get("pi");
-    if (pi) {
-        add("deg", {
-            dimensions: { Angle: 1 }, symbol: "deg", scale: divideScalars(pi, int(180)),
-        }, ["degree"]);
-        add("turn", {
-            dimensions: { Angle: 1 }, symbol: "turn", scale: multiplyScalars(int(2), pi),
-        }, ["turns", "revolution"]);
+    for (const name of CORE_KEYS) entries.set(name, wrapUnit(coreUnits.get(name)));
+    for (const name of CORE_KEYS) {
+        const lower = name.toLowerCase();
+        if (!entries.has(lower)) entries.set(lower, entries.get(name));
     }
-
-    add("min", { dimensions: s.dimensions, scale: int(60), symbol: "min" }, ["minute"]);
-    add("h", { dimensions: s.dimensions, scale: int(3600), symbol: "h" }, ["hour"]);
-    add("day", { dimensions: s.dimensions, scale: int(86400), symbol: "day" });
-    add("km", { dimensions: m.dimensions, scale: int(1000), symbol: "km" }, ["kilometer", "kilometre"]);
-    add("cm", { dimensions: m.dimensions, scale: rat(1n, 100n), symbol: "cm" });
-    add("mm", { dimensions: m.dimensions, scale: rat(1n, 1000n), symbol: "mm" });
-    add("in", { dimensions: m.dimensions, scale: rat(127n, 5000n), symbol: "in" }, ["inch"]);
-    add("ft", { dimensions: m.dimensions, scale: rat(381n, 1250n), symbol: "ft" }, ["foot"]);
-    add("yd", { dimensions: m.dimensions, scale: rat(1143n, 1250n), symbol: "yd" }, ["yard"]);
-    add("mi", { dimensions: m.dimensions, scale: rat(201168n, 125n), symbol: "mi" }, ["mile"]);
-
-    add("Hz", { dimensions: { Time: -1 }, symbol: "Hz" }, ["hertz"]);
-    add("N", { dimensions: { Mass: 1, Length: 1, Time: -2 }, symbol: "N" }, ["newton"]);
-    add("J", { dimensions: { Mass: 1, Length: 2, Time: -2 }, symbol: "J" }, ["joule"]);
-    add("W", { dimensions: { Mass: 1, Length: 2, Time: -3 }, symbol: "W" }, ["watt"]);
-    add("Pa", { dimensions: { Mass: 1, Length: -1, Time: -2 }, symbol: "Pa" }, ["pascal"]);
-
-    const deltaDegC = add("deltaDegC", { dimensions: { Temperature: 1 }, symbol: "deltaDegC", difference: true });
-    const deltaDegF = add("deltaDegF", {
-        dimensions: { Temperature: 1 }, symbol: "deltaDegF", difference: true, scale: rat(5n, 9n),
-    });
-    add("degC", {
-        dimensions: { Temperature: 1 }, symbol: "degC", affine: true,
-        scale: int(1), offset: rat(27315n, 100n), differenceUnit: deltaDegC,
-    }, ["celsius"]);
-    add("degF", {
-        dimensions: { Temperature: 1 }, symbol: "degF", affine: true,
-        scale: rat(5n, 9n), offset: rat(45967n, 180n), differenceUnit: deltaDegF,
-    }, ["fahrenheit"]);
-
     return {
         type: "map",
         entries,
