@@ -39160,6 +39160,16 @@ symbolicNamespace._proto = {=
     }
     throw new TypeError(`${label} must be an integer number, string, or bigint`);
   }
+  function plainIntegerOperand(value) {
+    if (typeof value === "bigint")
+      return value;
+    if (typeof value !== "number")
+      return;
+    if (!Number.isSafeInteger(value)) {
+      throw new RangeError(`Operand ${value} is not a safe integer, so it may already be rounded; pass a bigint or an exact Core value instead`);
+    }
+    return BigInt(value);
+  }
 
   // node_modules/@ratmath/core/src/reduced-arithmetic.js
   function gcd(a, b) {
@@ -39219,23 +39229,76 @@ symbolicNamespace._proto = {=
       return 0;
     return int < 0n ? (-int).toString(2).length : int.toString(2).length;
   };
-  var roundedQuotient = function(numerator, denominator, mode) {
-    const quotient = numerator / denominator;
-    const remainder = numerator % denominator;
-    if (remainder === 0n || mode === "toward-zero")
-      return quotient;
-    if (mode === "floor")
-      return numerator < 0n ? quotient - 1n : quotient;
-    if (mode === "ceil")
-      return numerator > 0n ? quotient + 1n : quotient;
-    const twiceRemainder = (remainder < 0n ? -remainder : remainder) * 2n;
-    if (twiceRemainder < denominator)
-      return quotient;
-    const direction = numerator < 0n ? -1n : 1n;
-    if (twiceRemainder > denominator || mode === "half-up") {
-      return quotient + direction;
+  var ROUNDING_MODES = Object.freeze([
+    "half-up",
+    "half-down",
+    "half-even",
+    "half-odd",
+    "half-ceil",
+    "half-floor",
+    "floor",
+    "ceil",
+    "toward-zero",
+    "away-from-zero"
+  ]);
+  var NAMED_MODES = new Set(ROUNDING_MODES);
+  var floorQuotient = (numerator, denominator) => {
+    const q = numerator / denominator;
+    return numerator % denominator !== 0n && numerator < 0n ? q - 1n : q;
+  };
+  function isRoundingMode(mode) {
+    return typeof mode === "function" || NAMED_MODES.has(mode);
+  }
+  function checkRoundingMode(mode) {
+    if (!isRoundingMode(mode)) {
+      throw new TypeError(`Unknown rounding mode ${JSON.stringify(mode)}; use one of ${ROUNDING_MODES.join(", ")} or a function`);
     }
-    return quotient % 2n === 0n ? quotient : quotient + direction;
+    return mode;
+  }
+  var roundedQuotient = function(numerator, denominator, mode, makeInfo) {
+    const f = floorQuotient(numerator, denominator);
+    const r = numerator - f * denominator;
+    if (r === 0n)
+      return f;
+    const c = f + 1n;
+    if (typeof mode === "function") {
+      const out = mode(makeInfo(numerator, denominator, f, r));
+      const big = typeof out === "bigint" ? out : typeof out === "number" && Number.isSafeInteger(out) ? BigInt(out) : typeof out?.value === "bigint" ? out.value : null;
+      if (big !== f && big !== c) {
+        throw new RangeError("A custom rounding function must return the floor or the ceiling of the value it is given");
+      }
+      return big;
+    }
+    const negative = numerator < 0n;
+    switch (mode) {
+      case "floor":
+        return f;
+      case "ceil":
+        return c;
+      case "toward-zero":
+        return negative ? c : f;
+      case "away-from-zero":
+        return negative ? f : c;
+    }
+    const twice = 2n * r;
+    if (twice < denominator)
+      return f;
+    if (twice > denominator)
+      return c;
+    switch (mode) {
+      case "half-up":
+        return negative ? f : c;
+      case "half-down":
+        return negative ? c : f;
+      case "half-even":
+        return f % 2n === 0n ? f : c;
+      case "half-odd":
+        return f % 2n === 0n ? c : f;
+      case "half-ceil":
+        return c;
+      default:
+        return f;
+    }
   };
   var continuedFractionOptions = function(options, defaultLimit) {
     if (options === undefined) {
@@ -39287,6 +39350,9 @@ symbolicNamespace._proto = {=
     return bound;
   }
   function exactParts(other) {
+    const plain = plainIntegerOperand(other);
+    if (plain !== undefined)
+      return [plain, 1n];
     if (typeof other?.value === "bigint" && other.denominator === undefined) {
       return [other.value, 1n];
     }
@@ -39368,6 +39434,9 @@ symbolicNamespace._proto = {=
       return result;
     }
     static #canonicalParts(other) {
+      const plain = plainIntegerOperand(other);
+      if (plain !== undefined)
+        return [plain, 1n];
       if (other == null || typeof other !== "object")
         return null;
       const prototype = Object.getPrototypeOf(other);
@@ -39525,6 +39594,8 @@ symbolicNamespace._proto = {=
       }
     }
     possibleRelationsTo(other) {
+      if (plainIntegerOperand(other) !== undefined)
+        other = new Rational(other);
       if (other?.isCertifiedApproximation === true)
         other = other.enclosure;
       if (other?.constructor?.name === "Integer")
@@ -39599,32 +39670,63 @@ symbolicNamespace._proto = {=
       return this.#numerator < 0n ? this.negate() : new Rational(this.#numerator, this.#denominator);
     }
     floor() {
-      return roundedQuotient(this.#numerator, this.#denominator, "floor");
+      return new Rational.#Integer(roundedQuotient(this.#numerator, this.#denominator, "floor"));
     }
     ceil() {
-      return roundedQuotient(this.#numerator, this.#denominator, "ceil");
+      return new Rational.#Integer(roundedQuotient(this.#numerator, this.#denominator, "ceil"));
     }
     trunc() {
-      return roundedQuotient(this.#numerator, this.#denominator, "toward-zero");
+      return new Rational.#Integer(roundedQuotient(this.#numerator, this.#denominator, "toward-zero"));
     }
-    round(mode = "half-even") {
-      if (!new Set(["half-even", "half-up", "toward-zero", "floor", "ceil"]).has(mode)) {
-        throw new TypeError("Unknown rounding mode");
-      }
-      return roundedQuotient(this.#numerator, this.#denominator, mode);
+    round(mode = "half-up") {
+      checkRoundingMode(mode);
+      return new Rational.#Integer(roundedQuotient(this.#numerator, this.#denominator, mode, Rational.#roundingInfo));
     }
-    roundTo(places, mode = "half-even") {
+    static #roundingInfo(numerator, denominator, f, r) {
+      const I = Rational.#Integer;
+      return Object.freeze({
+        value: new Rational(numerator, denominator),
+        floor: new I(f),
+        ceil: new I(f + 1n),
+        fraction: new Rational(r, denominator)
+      });
+    }
+    roundTo(places, mode = "half-up") {
       if (!Number.isSafeInteger(places)) {
         throw new RangeError("Decimal places must be a safe integer");
       }
-      if (!new Set(["half-even", "half-up", "toward-zero", "floor", "ceil"]).has(mode)) {
-        throw new TypeError("Unknown rounding mode");
-      }
+      checkRoundingMode(mode);
       const scale = 10n ** BigInt(Math.abs(places));
       if (places >= 0) {
-        return new Rational(roundedQuotient(this.#numerator * scale, this.#denominator, mode), scale);
+        return new Rational(roundedQuotient(this.#numerator * scale, this.#denominator, mode, Rational.#roundingInfo), scale);
       }
-      return new Rational(roundedQuotient(this.#numerator, this.#denominator * scale, mode) * scale);
+      return new Rational(roundedQuotient(this.#numerator, this.#denominator * scale, mode, Rational.#roundingInfo) * scale);
+    }
+    digitAt(k, base = 10) {
+      const b = Rational.#placeBase(base);
+      if (!Number.isSafeInteger(k))
+        throw new RangeError("Place must be a safe integer");
+      let n = this.#numerator < 0n ? -this.#numerator : this.#numerator;
+      let d = this.#denominator;
+      if (k >= 0)
+        d *= b ** BigInt(k);
+      else
+        n *= b ** BigInt(-k);
+      return Number(n / d % b);
+    }
+    placeValue(k, base = 10) {
+      const b = Rational.#placeBase(base);
+      const digit = BigInt(this.digitAt(k, base)) * (this.#numerator < 0n ? -1n : 1n);
+      return k >= 0 ? new Rational(digit * b ** BigInt(k)) : new Rational(digit, b ** BigInt(-k));
+    }
+    static #placeBase(base) {
+      if (!Number.isSafeInteger(base) || base < 2)
+        throw new RangeError("Base must be an integer of at least 2");
+      return BigInt(base);
+    }
+    static #Integer = null;
+    static _registerInteger(IntegerClass) {
+      Rational.#Integer = IntegerClass;
     }
     toJSON() {
       return {
@@ -40535,6 +40637,21 @@ symbolicNamespace._proto = {=
   }
 
   // node_modules/@ratmath/core/src/rational-interval.js
+  function liftPlain(other) {
+    const value = plainIntegerOperand(other);
+    return value === undefined ? other : new Rational(value);
+  }
+  function asInterval(other) {
+    other = liftPlain(other);
+    if (other?.isCertifiedApproximation === true)
+      return other.enclosure;
+    if (typeof other?.value === "bigint" && other.denominator === undefined) {
+      other = new Rational(other.value);
+    }
+    if (other instanceof Rational)
+      return new RationalInterval(other, other);
+    return other;
+  }
   function hasTerminatingDecimal(value) {
     let denominator = value.denominator;
     while (denominator % 2n === 0n)
@@ -40664,6 +40781,7 @@ symbolicNamespace._proto = {=
       return this.#high;
     }
     add(other) {
+      other = liftPlain(other);
       if (other?.isCertifiedApproximation === true) {
         return this.add(other.enclosure);
       }
@@ -40683,6 +40801,7 @@ symbolicNamespace._proto = {=
       }
     }
     subtract(other) {
+      other = liftPlain(other);
       if (other?.isCertifiedApproximation === true) {
         return this.subtract(other.enclosure);
       }
@@ -40702,6 +40821,7 @@ symbolicNamespace._proto = {=
       }
     }
     multiply(other) {
+      other = liftPlain(other);
       if (other?.isCertifiedApproximation === true) {
         return this.multiply(other.enclosure);
       }
@@ -40733,6 +40853,7 @@ symbolicNamespace._proto = {=
       }
     }
     divide(other) {
+      other = liftPlain(other);
       if (other?.isCertifiedApproximation === true) {
         return this.divide(other.enclosure);
       }
@@ -40777,6 +40898,7 @@ symbolicNamespace._proto = {=
       }
     }
     possibleRelationsTo(other) {
+      other = liftPlain(other);
       if (other?.isCertifiedApproximation === true)
         other = other.enclosure;
       if (other?.value !== undefined && typeof other.value === "bigint") {
@@ -40872,9 +40994,11 @@ symbolicNamespace._proto = {=
       return result;
     }
     overlaps(other) {
+      other = asInterval(other);
       return !(this.#high.lessThan(other.low) || other.high.lessThan(this.#low));
     }
     contains(other) {
+      other = asInterval(other);
       return this.#low.lessThanOrEqual(other.low) && this.#high.greaterThanOrEqual(other.high);
     }
     containsValue(value) {
@@ -40886,9 +41010,11 @@ symbolicNamespace._proto = {=
       return this.#low.lessThanOrEqual(zero) && this.#high.greaterThanOrEqual(zero);
     }
     equals(other) {
+      other = asInterval(other);
       return this.#low.equals(other.low) && this.#high.equals(other.high);
     }
     intersection(other) {
+      other = asInterval(other);
       if (!this.overlaps(other)) {
         return null;
       }
@@ -40897,6 +41023,7 @@ symbolicNamespace._proto = {=
       return new RationalInterval(newLow, newHigh);
     }
     union(other) {
+      other = asInterval(other);
       const adjacentRight = this.#high.equals(other.low);
       const adjacentLeft = other.high.equals(this.#low);
       if (!this.overlaps(other) && !adjacentRight && !adjacentLeft) {
@@ -41354,6 +41481,13 @@ symbolicNamespace._proto = {=
   function asIntervalSet(value) {
     if (value instanceof RationalIntervalSet)
       return value;
+    const plain = plainIntegerOperand(value);
+    if (plain !== undefined)
+      value = new Rational(plain);
+    if (typeof value?.value === "bigint" && value.denominator === undefined)
+      value = new Rational(value.value);
+    if (value instanceof Rational)
+      value = new RationalInterval(value, value);
     return new RationalIntervalSet(value);
   }
   function formatEndpoint(value, negative) {
@@ -41840,6 +41974,16 @@ symbolicNamespace._proto = {=
   }
 
   // node_modules/@ratmath/core/src/fraction.js
+  function liftOperand(other) {
+    const plain = plainIntegerOperand(other);
+    if (plain !== undefined)
+      return new Fraction(plain, 1n);
+    if (typeof other?.value === "bigint" && other.denominator === undefined) {
+      return new Fraction(other.value, 1n);
+    }
+    return other;
+  }
+
   class Fraction {
     #numerator;
     #denominator;
@@ -41888,21 +42032,25 @@ symbolicNamespace._proto = {=
       });
     }
     add(other) {
+      other = liftOperand(other);
       if (this.#denominator !== other.denominator) {
         throw new Error("Addition only supported for equal denominators");
       }
       return Fraction.#fromComponents(this.#numerator + other.numerator, this.#denominator);
     }
     subtract(other) {
+      other = liftOperand(other);
       if (this.#denominator !== other.denominator) {
         throw new Error("Subtraction only supported for equal denominators");
       }
       return Fraction.#fromComponents(this.#numerator - other.numerator, this.#denominator);
     }
     multiply(other) {
+      other = liftOperand(other);
       return Fraction.#fromComponents(this.#numerator * other.numerator, this.#denominator * other.denominator);
     }
     divide(other) {
+      other = liftOperand(other);
       if (other.numerator === 0n) {
         throw new Error("Division by zero");
       }
@@ -42017,18 +42165,23 @@ symbolicNamespace._proto = {=
       return `${this.#numerator}/${this.#denominator}`;
     }
     equals(other) {
+      other = liftOperand(other);
       return this.#numerator === other.numerator && this.#denominator === other.denominator;
     }
     lessThan(other) {
+      other = liftOperand(other);
       return Fraction.#compareValues(this, other) < 0;
     }
     lessThanOrEqual(other) {
+      other = liftOperand(other);
       return Fraction.#compareValues(this, other) <= 0;
     }
     greaterThan(other) {
+      other = liftOperand(other);
       return Fraction.#compareValues(this, other) > 0;
     }
     greaterThanOrEqual(other) {
+      other = liftOperand(other);
       return Fraction.#compareValues(this, other) >= 0;
     }
     E(exponent) {
@@ -42049,6 +42202,7 @@ symbolicNamespace._proto = {=
       };
     }
     mediant(other) {
+      other = liftOperand(other);
       if (this.isInfinite && other.isInfinite) {
         if (this.#numerator === -1n && other.numerator === 1n) {
           return new Fraction(0n, 1n);
@@ -42283,7 +42437,14 @@ symbolicNamespace._proto = {=
       return this.#high;
     }
     mediantSplit() {
-      const mediant = Fraction.mediant(this.#low, this.#high);
+      let [a, b] = [this.#low, this.#high];
+      const sa = a.denominator < 0n ? -1 : a.denominator > 0n ? 1 : 0;
+      const sb = b.denominator < 0n ? -1 : b.denominator > 0n ? 1 : 0;
+      if (sa !== sb) {
+        const flip = (f) => f.denominator < 0n ? new Fraction(-f.numerator, -f.denominator) : f;
+        [a, b] = [flip(a), flip(b)];
+      }
+      const mediant = Fraction.mediant(a, b);
       return [
         new FractionInterval(this.#low, mediant),
         new FractionInterval(mediant, this.#high)
@@ -42350,6 +42511,10 @@ symbolicNamespace._proto = {=
       return `${this.#low.toString()}:${this.#high.toString()}`;
     }
     equals(other) {
+      if (other?.low === undefined) {
+        const point = new Fraction(1n, 1n).multiply(other);
+        return this.#low.equals(point) && this.#high.equals(point);
+      }
       return this.#low.equals(other.low) && this.#high.equals(other.high);
     }
     E(exponent) {
@@ -42363,6 +42528,10 @@ symbolicNamespace._proto = {=
   }
 
   // node_modules/@ratmath/core/src/integer.js
+  function liftPlain2(other) {
+    const value = plainIntegerOperand(other);
+    return value === undefined ? other : new Integer(value);
+  }
   function integerDivisor(other, zeroMessage) {
     if (!(other instanceof Integer)) {
       throw new TypeError("Floor division and modulo require an Integer divisor");
@@ -42393,6 +42562,7 @@ symbolicNamespace._proto = {=
       return this.#value;
     }
     add(other) {
+      other = liftPlain2(other);
       if (other?.isCertifiedApproximation === true) {
         return other._operateExactLeft("add", this);
       }
@@ -42411,6 +42581,7 @@ symbolicNamespace._proto = {=
       }
     }
     subtract(other) {
+      other = liftPlain2(other);
       if (other?.isCertifiedApproximation === true) {
         return other._operateExactLeft("subtract", this);
       }
@@ -42429,6 +42600,7 @@ symbolicNamespace._proto = {=
       }
     }
     multiply(other) {
+      other = liftPlain2(other);
       if (other?.isCertifiedApproximation === true) {
         return other._operateExactLeft("multiply", this);
       }
@@ -42447,6 +42619,7 @@ symbolicNamespace._proto = {=
       }
     }
     divide(other) {
+      other = liftPlain2(other);
       if (other?.isCertifiedApproximation === true) {
         return other._operateExactLeft("divide", this);
       }
@@ -42472,6 +42645,7 @@ symbolicNamespace._proto = {=
       }
     }
     possibleRelationsTo(other) {
+      other = liftPlain2(other);
       const point = new Rational(this.#value, 1n);
       if (other?.isCertifiedApproximation === true)
         other = other.enclosure;
@@ -42492,17 +42666,20 @@ symbolicNamespace._proto = {=
       throw new TypeError("Possible relations require a Core numeric value");
     }
     floorDivide(other) {
+      other = liftPlain2(other);
       const divisor = integerDivisor(other, "Division by zero");
       const quotient = this.#value / divisor;
       const remainder = this.#value % divisor;
       return new Integer(remainder !== 0n && remainder < 0n !== divisor < 0n ? quotient - 1n : quotient);
     }
     floorModulo(other) {
+      other = liftPlain2(other);
       const divisor = integerDivisor(other, "Modulo by zero");
       const remainder = this.#value % divisor;
       return new Integer(remainder !== 0n && remainder < 0n !== divisor < 0n ? remainder + divisor : remainder);
     }
     divmod(other) {
+      other = liftPlain2(other);
       const divisor = integerDivisor(other, "Division by zero");
       let quotient = this.#value / divisor;
       let remainder = this.#value % divisor;
@@ -42513,6 +42690,7 @@ symbolicNamespace._proto = {=
       return [new Integer(quotient), new Integer(remainder)];
     }
     modulo(other) {
+      other = liftPlain2(other);
       if (other.value === 0n) {
         throw new Error("Modulo by zero");
       }
@@ -42540,6 +42718,7 @@ symbolicNamespace._proto = {=
       return new Integer(this.#value ** exp);
     }
     equals(other) {
+      other = liftPlain2(other);
       if (other instanceof Rational) {
         return other.denominator === 1n && this.#value === other.numerator;
       }
@@ -42550,6 +42729,7 @@ symbolicNamespace._proto = {=
       return Number.isNaN(order) ? 0 : order;
     }
     #order(other) {
+      other = liftPlain2(other);
       let left = this.#value;
       let right;
       if (other instanceof Rational) {
@@ -42604,6 +42784,7 @@ symbolicNamespace._proto = {=
       return this.#value < 0n;
     }
     gcd(other) {
+      other = liftPlain2(other);
       let a = this.#value < 0n ? -this.#value : this.#value;
       let b = other.value < 0n ? -other.value : other.value;
       while (b !== 0n) {
@@ -42614,12 +42795,47 @@ symbolicNamespace._proto = {=
       return new Integer(a);
     }
     lcm(other) {
+      other = liftPlain2(other);
       if (this.#value === 0n || other.value === 0n) {
         return new Integer(0);
       }
       const gcd = this.gcd(other);
       const product = this.multiply(other).abs();
       return product.divide(gcd);
+    }
+    round(mode = "half-up") {
+      checkRoundingMode(mode);
+      return this;
+    }
+    floor() {
+      return this;
+    }
+    ceil() {
+      return this;
+    }
+    trunc() {
+      return this;
+    }
+    digits(base = 10) {
+      if (!Number.isSafeInteger(base) || base < 2)
+        throw new RangeError("Base must be an integer of at least 2");
+      const b = BigInt(base);
+      let n = this.value < 0n ? -this.value : this.value;
+      if (n === 0n)
+        return [0];
+      const out = [];
+      while (n > 0n) {
+        out.push(Number(n % b));
+        n /= b;
+      }
+      return out.reverse();
+    }
+    digitAt(k, base = 10) {
+      return this.toRational().digitAt(k, base);
+    }
+    placeValue(k, base = 10) {
+      const v = this.toRational().placeValue(k, base);
+      return v.denominator === 1n ? new Integer(v.numerator) : v;
     }
     toString(base) {
       if (base === undefined) {
@@ -42706,6 +42922,7 @@ symbolicNamespace._proto = {=
       return { $ratmath: "Integer", value: this.#value.toString() };
     }
   }
+  Rational._registerInteger(Integer);
 
   // node_modules/@ratmath/core/src/certified-approximation.js
   var Relation = Object.freeze({
@@ -42762,6 +42979,9 @@ symbolicNamespace._proto = {=
     return new CertifiedApproximation(candidate, enclosure, options);
   }
   function operand(value) {
+    const plain = plainIntegerOperand(value);
+    if (plain !== undefined)
+      value = new Integer(plain);
     if (value instanceof CertifiedApproximation) {
       return { candidate: value.candidate, enclosure: value.enclosure, approximation: true };
     }
@@ -42839,6 +43059,9 @@ symbolicNamespace._proto = {=
     return typeof sourceId === "string" || typeof sourceId === "number" ? sourceId : null;
   }
   function relationEnclosure(value) {
+    const plain = plainIntegerOperand(value);
+    if (plain !== undefined)
+      value = new Integer(plain);
     if (value instanceof CertifiedApproximation)
       return value.enclosure;
     if (value instanceof RationalInterval)
@@ -62771,6 +62994,13 @@ ${indentStr})`;
     return `{${entries.join(", ")}}`;
   }
 
+  // node_modules/@ratmath/core/src/time.js
+  var NOT_A_DATE_LIBRARY = "Classroom helpers only: no time zones, daylight saving, leap seconds or historical calendars. " + "For real dates and times use Temporal (or @js-temporal/polyfill), Luxon or date-fns.";
+  var quantityFactory = null;
+  function _registerQuantityFactory(Q) {
+    quantityFactory = Q;
+  }
+
   // node_modules/@ratmath/core/src/units.js
   var BASE_DIMENSIONS = Object.freeze([
     "Mass",
@@ -62781,7 +63011,8 @@ ${indentStr})`;
     "Amount",
     "Luminosity",
     "Angle",
-    "Information"
+    "Information",
+    "Money"
   ]);
   var BASE_SYMBOLS = Object.freeze({
     Mass: "kg",
@@ -62792,7 +63023,8 @@ ${indentStr})`;
     Amount: "mol",
     Luminosity: "cd",
     Angle: "rad",
-    Information: "bit"
+    Information: "bit",
+    Money: "USD"
   });
   var ZERO2 = new Integer(0n);
   var ONE2 = new Integer(1n);
@@ -63300,6 +63532,50 @@ ${indentStr})`;
     equals(other) {
       return other instanceof Quantity && dimensionsEqual(this.dimensions, other.dimensions) && this.relation(other) === Relation.EQUAL;
     }
+    toClock({ seconds = false, wrap, round } = {}) {
+      if (!dimensionsEqual(this.dimensions, { Time: 1 }))
+        throw new TypeError("toClock needs a duration (a time quantity)");
+      const total = this.to("s").value;
+      if (!(total instanceof Integer || total instanceof Rational))
+        throw new TypeError("toClock needs an exact duration");
+      let r = total instanceof Integer ? new Rational(total.value) : total;
+      const step = seconds ? 1n : 60n;
+      if (round) {
+        r = new Rational(r.divide(new Rational(step)).round(round).value * step);
+      } else if (!seconds && r.numerator % (60n * r.denominator) !== 0n) {
+        throw new RangeError("Duration is not a whole number of minutes (pass round, or seconds: true)");
+      }
+      const negative = r.numerator < 0n;
+      if (negative)
+        r = r.negate();
+      const whole = r.floor().value;
+      let frac = r.subtract(new Rational(whole));
+      let h = whole / 3600n;
+      const m = whole / 60n % 60n;
+      const sec = whole % 60n;
+      if (wrap !== undefined) {
+        if (wrap !== 12 && wrap !== 24)
+          throw new RangeError("wrap must be 12 or 24");
+        if (negative)
+          throw new RangeError("A time of day cannot be negative");
+        h %= BigInt(wrap);
+        if (wrap === 12 && h === 0n)
+          h = 12n;
+      }
+      const two = (n) => n.toString().padStart(2, "0");
+      let text = `${negative ? "-" : ""}${h}:${two(m)}`;
+      if (seconds) {
+        text += `:${two(sec)}`;
+        if (frac.numerator !== 0n) {
+          const dec = frac.toDecimal(40);
+          if (!/^0\.\d+$/.test(dec) || !new Rational(dec.replace("0.", ""), 10n ** BigInt(dec.length - 2)).equals(frac)) {
+            throw new RangeError("Fractional seconds do not end as a decimal (pass round)");
+          }
+          text += dec.slice(1);
+        }
+      }
+      return text;
+    }
     toString({ style = "ascii", format = (v) => v.toString() } = {}) {
       const unit = this.unit.toString({ style });
       return unit === "1" ? format(this.value) : `${format(this.value)} ${unit}`;
@@ -63662,6 +63938,13 @@ ${indentStr})`;
     d("rpm", "1 turn/min");
     g("Information");
     d("B", "8 bit", { prefixes: "SI+binary", aliases: ["byte", "bytes"] });
+    g("Money");
+    d("USD", { dimensions: { Money: 1 } }, { aliases: ["dollar", "dollars"] });
+    d("cent", "1/100 USD", { aliases: ["cents", "¢"] });
+    d("penny", "1 cent", { aliases: ["pennies"] });
+    d("nickel", "5 cent", { aliases: ["nickels"] });
+    d("dime", "10 cent", { aliases: ["dimes"] });
+    d("quarter", "25 cent", { aliases: ["quarters"] });
     return system;
   }
   var units = standardCatalogue(new UnitSystem);
@@ -63678,6 +63961,7 @@ ${indentStr})`;
     g0: Q("9.80665 m/s^2"),
     G: Q(new RationalInterval(parseScalarText("6.67415E-11"), parseScalarText("6.67445E-11")), "m^3/(kg*s^2)")
   });
+  _registerQuantityFactory(Q);
 
   // src/runtime/quantities.js
   function int3(value) {
@@ -92871,7 +93155,7 @@ ${indented.join(`,
       throw new Error(`${who} expects a piecewise function made with {?: ... }`);
     return value.__piecewise;
   }
-  function asInterval(value, who) {
+  function asInterval2(value, who) {
     if (value instanceof RationalInterval)
       return value;
     const q = toQ(value);
@@ -92949,7 +93233,7 @@ ${indented.join(`,
       impl(args, context, evaluate) {
         const fnValue = evaluate(args[0]);
         const spec = piecewiseOf(fnValue, ".Breaks");
-        const range = asInterval(evaluate(args[1]), ".Breaks");
+        const range = asInterval2(evaluate(args[1]), ".Breaks");
         const variable = args.length > 2 ? String(evaluate(args[2])?.value ?? spec.variables[0]) : spec.variables[0];
         if (!spec.variables.includes(variable))
           throw new Error(`.Breaks: ${variable} is not a variable of this piecewise function`);

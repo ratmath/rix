@@ -104,7 +104,7 @@ function usage() {
 Options:
   --out=DIR              Write artifacts declared with .Out(path, value) into DIR
   --plugin=ID             Add a plugin to the selected set (repeatable)
-  --ratmath[=PATH]        Load @ratmath/rix-bridge: the analytic, linalg, algebraic and graphics libraries
+  --ratmath[=PATH]        Load @ratmath/rix-bridge: the RatMath Shelf libraries (linalg, stats, geo, ...)
   --plugins=a,b           Replace preloads; full is the REPL default, none is bare
   --all-plugins           Preload every discovered plugin with an approved installer
   --all-built-plugins     Preload every plugin shipped in this RiX repository
@@ -1177,7 +1177,7 @@ async function runTests(filters, options = {}) {
 
 /**
  * `--ratmath`: load @ratmath/rix-bridge, the host plugins for the ratmath
- * JavaScript libraries (analytic, linalg, algebraic, graphics). RiX does not
+ * JavaScript libraries (the RatMath Shelf). RiX does not
  * depend on them; the flag is the host's decision to trust and load that one
  * package. It is found from the working directory, next to this RiX install,
  * or at the path given as --ratmath=PATH. Returns the plugin ids to load.
