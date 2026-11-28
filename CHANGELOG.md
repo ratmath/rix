@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Changed
+
+- Core 0.12 (`@ratmath/core` ^0.12.0): `Round` and `RoundTo` default to
+  `half-up` (school rounding, ties away from zero; was `half-even`) and accept
+  Core's new modes `half-down`, `half-odd`, `half-ceil`, `half-floor` and
+  `away-from-zero`.
+
 ### Added
 
 - Units now come from Core (`@ratmath/core/units`), shared with the RatMath
