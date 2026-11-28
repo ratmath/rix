@@ -14,8 +14,8 @@
 | `rational.Floor()` | `Integer` | Round toward negative infinity. |
 | `rational.Ceil()` | `Integer` | Round toward positive infinity. |
 | `rational.Trunc()` | `Integer` | Round toward zero. |
-| `rational.Round(mode?)` | `Integer` | Round with `half-even` by default; modes are `half-even`, `half-up`, `toward-zero`, `floor`, and `ceil`. |
-| `rational.RoundTo(places, mode?)` | `Rational` | Round to an exact number of decimal places. Negative places round left of the decimal point. |
+| `rational.Round(mode?)` | `Integer` | Round with `half-up` (school rounding, ties away from zero) by default; modes are `half-up`, `half-down`, `half-even`, `half-odd`, `half-ceil`, `half-floor`, `floor`, `ceil`, `toward-zero`, and `away-from-zero`. |
+| `rational.RoundTo(places, mode?)` | `Rational` | Round to an exact number of decimal places, with the same modes and default. Negative places round left of the decimal point. |
 | `rational.E(exponent)` | `Rational` | Multiply exactly by `10^exponent`. |
 | `rational.ToMixedString()` | `String` | Format as a mixed number. |
 | `rational.ToDecimal()` | `String` | Format an exact terminating or repeating decimal representation. |
@@ -48,7 +48,9 @@ q.Floor() ##@ == -3;
 q.Ceil() ##@ == -2;
 q.Trunc() ##@ == -2;
 (7/2).Round() ##@ == 4;
+(5/2).Round() ##@ == 3;
 (5/2).Round("half-even") ##@ == 2;
+(-5/2).Round() ##@ == -3;
 (1/3).RoundTo(2) ##@ == 33/100;
 (123/10).RoundTo(-1).Numerator() ##@ == 10;
 (3/4).E(2).Numerator() ##@ == 75;
